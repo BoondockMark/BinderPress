@@ -14,7 +14,7 @@ fictional starter handbook.
 
 ## Try it
 
-Requires Node.js 22 or newer and npm. Installation downloads the Chrome for
+Requires Node.js 22.12 or newer and npm. Installation downloads the Chrome for
 Testing revision selected by the exact Puppeteer dependency and lockfile.
 
 ```sh
@@ -89,7 +89,7 @@ BINDER_INDEX.md               Generated document and review inventory
 build/                        Temporary browser files and diagnostics
 ```
 
-The application owns its print styles, fonts, templates, visual baseline, and
+The application owns its print styles, templates, visual baseline, and
 editor. Content directories do not supply executable application resources.
 
 The publishing workflow retains draft, under-review, and approved states.
@@ -125,7 +125,9 @@ npm pack --dry-run
 
 Tests include browser editing, conflict handling, private-library isolation,
 publication protections, configuration validation, and content-only startup.
-Rendering uses pinned fonts, a fixed viewport, and the lockfile-selected browser;
+Rendering uses the Arial/Helvetica/system sans-serif stack, a fixed viewport,
+and the lockfile-selected browser. Fonts are embedded in generated PDFs;
+PDF bytes can differ across operating systems. Linux CI produces release artifacts;
 the build rejects overflow and compares component proofs with a reviewed visual
 baseline. `npm run test:visual:update` updates the application baseline only
 after intentional design review.
@@ -138,8 +140,7 @@ Replace that development link before independent distribution. See
 
 ## License
 
-Application code retains the source project's GNU GPL version 3 license. Font
-license notices remain under `assets/fonts/`. Design assets retain their existing
+Application code retains the source project's GNU GPL version 3 license. No fonts are bundled or downloaded. Design assets retain their existing
 manifest credits. A binder's content and contributed images need their own
 applicable permissions and attribution; do not assume the application license
 relicenses third-party material.

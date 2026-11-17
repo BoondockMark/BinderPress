@@ -4,23 +4,89 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { createGitPublisher, githubRemote, runGitCommand } from '../scripts/lib/editor-git.mjs';
+import { createGitPublisher, githubRemote, githubFailure, gitFailure, runGitCommand } from '../scripts/lib/editor-git.mjs';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const pagePath = 'handouts/section/STH-001.md';
 const session = 'test-git-session';
-async function fixture(t, { privateRepo = false, privatePage = false } = {}) {
+
+test('Git failures identify the step and reason without echoing credential arguments', () => {
+  const error = { code: 128 };
+  const reason = 'fatal: Unable to create index.lock: File exists.';
+  const message = gitFailure(error, ['read-tree', 'secret-argument'], reason);
+  assert.match(message, /git read-tree failed \(exit 128\)/);
+  assert.match(message, /index.lock: File exists/);
+  assert.match(message, /saved files are preserved/);
+  assert.doesNotMatch(message, /secret-argument/);
+  const cases = [
+    ['fatal: not a git repository', /Git checkout/],
+    ['fatal: detected dubious ownership in repository', /safe.directory/],
+    ['fatal: unable to auto-detect email address', /git config user.email/],
+    ['fatal: could not read Username: terminal prompts disabled', /gh auth setup-git/],
+    ['unknown option: cacheinfo', /update Git/]
+  ];
+  for (const [stderr, expected] of cases) assert.match(gitFailure(error, ['fetch'], stderr), expected);
+  assert.match(gitFailure({ code: 1 }, ['merge-base'], ''), /no common commit/);
+  assert.match(gitFailure({ killed: true }, ['fetch'], ''), /timed out/);
+  assert.match(gitFailure({ code: 'EACCES' }, ['status'], ''), /git status failed \(EACCES\)/);
+  assert.match(gitFailure(error, ['fetch'], '', {}, 'Fetching the GitHub base branch'), /Fetching the GitHub base branch \(git fetch\)/);
+});
+
+test('Git diagnostic details redact credentials and bound output', () => {
+  const stderr = 'fatal: https://user:remote-password@github.com/repo?token=query-secret\nAuthorization: Basic encoded-credential\nAuthorization: Bearer header-secret\nghp_tokenvalue github_pat_tokenvalue custom-secret';
+  const message = gitFailure({ code: 128 }, ['push'], stderr, { GH_TOKEN: 'custom-secret' });
+  assert.doesNotMatch(message, /remote-password|query-secret|encoded-credential|header-secret|ghp_tokenvalue|github_pat_tokenvalue|custom-secret/);
+  assert.doesNotMatch(message, /[\r\n]/);
+  assert.match(message, /\[redacted\]/);
+  assert.ok(gitFailure({ code: 128 }, ['fetch'], 'x'.repeat(5000)).length < 1500);
+});
+
+test('Git subprocess errors surface the failed subcommand and stderr', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'editor-git-errors-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await assert.rejects(runGitCommand('git', ['editor-nonexistent-command'], { cwd: directory }), error => {
+    assert.equal(error.status, 409);
+    assert.match(error.message, /git editor-nonexistent-command failed/);
+    assert.match(error.message, /Git reported:/);
+    assert.match(error.message, /not a git command/);
+    return true;
+  });
+});
+
+test('GitHub command failures give recovery steps without exposing CLI output or tokens', () => {
+  const cases = [
+    ['gh: Bad credentials (HTTP 401)', { GH_TOKEN: 'secret-value' }, /GH_TOKEN, which overrides/],
+    ['gh: Bad credentials (HTTP 401)', { GITHUB_TOKEN: 'secret-value' }, /GITHUB_TOKEN, which overrides/],
+    ['To get started with GitHub CLI, please run: gh auth login', {}, /gh auth login --hostname github.com/],
+    ['gh: Resource not accessible by personal access token (HTTP 403)', {}, /repository write access/],
+    ['gh: Not Found (HTTP 404)', {}, /Check origin/],
+    ['gh: API rate limit exceeded (HTTP 403)', {}, /rate limit reached/],
+    ['gh: Resource protected by organization SAML enforcement (HTTP 403)', {}, /SSO authorization/],
+    ['gh: Service Unavailable (HTTP 503)', {}, /temporarily unavailable/],
+    ['Get "https://api.github.com/repos/test/repo": Forbidden', {}, /network, proxy, firewall/],
+    ['dial tcp: lookup api.github.com: no such host', {}, /could not connect/],
+    ['An unknown failure', {}, /gh api repos\/OWNER\/REPO/]
+  ];
+  for (const [stderr, credentials, expected] of cases) {
+    const message = githubFailure({ code: 1 }, `${stderr}\nsecret-value`, credentials);
+    assert.match(message, expected);
+    assert.match(message, /saved files are preserved/);
+    assert.doesNotMatch(message, /secret-value/);
+  }
+});
+
+async function fixture(t, { privateRepo = false, privatePage = false, windowsPath = false } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'editor-git-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const root = path.join(directory, 'checkout'), remote = path.join(directory, 'remote.git');
+  const root = path.join(directory, 'checkout with spaces'), remote = path.join(directory, 'remote.git');
   await fs.mkdir(root); const git = (args, input) => runGitCommand('git', args, { cwd: root, input });
   await runGitCommand('git', ['init', '--bare', remote], { cwd: directory });
-  await git(['init', '-b', 'main']); await git(['config', 'commit.gpgsign', 'false']); await git(['config', 'user.name', 'Editor Test']); await git(['config', 'user.email', 'editor@example.org']);
+  await git(['init', '-b', 'main']); await git(['config', 'core.autocrlf', 'false']); await git(['config', 'commit.gpgsign', 'false']); await git(['config', 'user.name', 'Editor Test']); await git(['config', 'user.email', 'editor@example.org']);
   await fs.mkdir(path.join(root, 'handouts/section'), { recursive: true }); await fs.writeFile(path.join(root, pagePath), 'Original handout\n');
   await fs.mkdir(path.join(root, 'assets/handouts/STH-001'), { recursive: true });
   await fs.writeFile(path.join(root, 'assets/handouts/STH-001/manifest.json'), '{"assets":[]}\n');
   await fs.writeFile(path.join(root, 'unrelated.txt'), 'original\n');
   await git(['add', '.']); await git(['commit', '-m', 'Initial']); await git(['push', remote, 'HEAD:refs/heads/main']);
   await git(['remote', 'add', 'origin', 'https://github.com/test/repo.git']);
-  const remoteState = { private: privateRepo, prs: [], failPush: false, failCreate: false, lastBody: undefined, pushed: 0 };
+  const remoteState = { private: privateRepo, prs: [], failPush: false, failCreate: false, lastBody: undefined, pushed: 0, crlfWorktrees: false };
   async function run(command, args, options) {
     if (command === 'git') {
       const actual = [...args];
@@ -29,7 +95,8 @@ async function fixture(t, { privateRepo = false, privatePage = false } = {}) {
         if (remoteState.failPush) throw Error('Simulated push failure');
         actual[1] = remote; remoteState.pushed++;
       }
-      return runGitCommand(command, actual, options);
+      const output = await runGitCommand(command, actual, options);
+      return remoteState.crlfWorktrees && actual[0] === 'worktree' ? output.replace(/\r?\n/g, '\r\n') : output;
     }
     assert.equal(command, 'gh'); assert.equal(args[args.indexOf('--hostname') + 1], 'github.com'); const endpoint = args[1];
     if (endpoint === 'repos/test/repo') return JSON.stringify({ full_name: 'test/repo', private: remoteState.private, default_branch: 'main', permissions: { push: true } });
@@ -46,7 +113,7 @@ async function fixture(t, { privateRepo = false, privatePage = false } = {}) {
     remoteState.prs.push(pr); return JSON.stringify(pr);
   }
   const publisher = createGitPublisher({ run });
-  const target = async () => ({ root, publicRoot: path.join(directory, 'public'), private: privatePage, path: pagePath, code: 'STH-001', revision: digest(await fs.readFile(path.join(root, pagePath))) });
+  const target = async () => ({ root, publicRoot: path.join(directory, 'public'), private: privatePage, path: windowsPath ? pagePath.replaceAll('/', '\\') : pagePath, code: 'STH-001', revision: digest(await fs.readFile(path.join(root, pagePath))) });
   const prepare = async () => publisher.prepare(await target(), session);
   const publish = plan => publisher.publish(plan.token, session, 'Update preparedness handout', 'Review these edits.', async () => {});
   return { root, remote, git, publisher, target, prepare, publish, state: remoteState };
@@ -56,6 +123,59 @@ test('GitHub remote parsing rejects credentials and non-GitHub destinations', ()
   assert.equal(githubRemote('https://github.com/owner/repo.git'), 'owner/repo');
   assert.equal(githubRemote('git@github.com:owner/repo.git'), 'owner/repo');
   for (const remote of ['https://token@github.com/owner/repo.git', 'https://github.com.evil/owner/repo', '/tmp/repo', 'ssh://evil/repo']) assert.throws(() => githubRemote(remote));
+});
+
+test('Git publication accepts Windows source paths and preserves editor paths when verifying updates', async t => {
+  const f = await fixture(t, { windowsPath: true });
+  const nativePath = (await f.target()).path;
+  await fs.writeFile(path.join(f.root, pagePath), 'Windows handout edit\n');
+  await assert.rejects(f.publisher.prepare({ ...await f.target(), revision: 'stale' }, session), /saved handout changed/);
+  const plan = await f.prepare();
+  assert.deepEqual(plan.files, [pagePath]);
+  assert.match(plan.patch, /Windows handout edit/);
+  const first = await f.publisher.publish(plan.token, session, 'Update Windows handout', '', async target => {
+    assert.equal(target.path, nativePath);
+  });
+  assert.equal(await f.git(['show', `${first.commit}:${pagePath}`]), 'Windows handout edit\n');
+  assert.equal((await f.git(['ls-tree', '-r', '--name-only', first.commit])).trim().split('\n').filter(file => file === pagePath).length, 1);
+  await fs.writeFile(path.join(f.root, pagePath), 'Next Windows edit\n');
+  // Discovery now returns '/', but a prior Windows publication stored '\\'.
+  const canonicalTarget = { ...await f.target(), path: pagePath };
+  const next = await f.publisher.prepare(canonicalTarget, session);
+  assert.equal(next.branch, plan.branch);
+  assert.deepEqual(next.files, [pagePath]);
+  const second = await f.publish(next);
+  assert.equal(second.number, first.number);
+  assert.equal(await f.git(['show', `${second.commit}:${pagePath}`]), 'Next Windows edit\n');
+  f.state.prs[0].head.sha = second.commit;
+  assert.equal((await f.publisher.prepare(await f.target(), session)).branch, plan.branch);
+});
+
+test('Git publication applies checkout line-ending filters without treating CRLF as a content edit', async t => {
+  const f = await fixture(t);
+  await f.git(['config', 'core.autocrlf', 'true']);
+  await fs.writeFile(path.join(f.root, pagePath), 'Original handout\r\n');
+  await assert.rejects(f.prepare(), /already match GitHub/);
+  await fs.writeFile(path.join(f.root, pagePath), 'Changed handout\r\n');
+  const result = await f.publish(await f.prepare());
+  assert.equal(await f.git(['show', `${result.commit}:${pagePath}`]), 'Changed handout\n');
+  assert.equal(await fs.readFile(path.join(f.root, pagePath), 'utf8'), 'Changed handout\r\n');
+});
+
+test('CRLF Git worktree output protects checked-out editor branches during prepare and publish', async t => {
+  const f = await fixture(t);
+  await fs.writeFile(path.join(f.root, pagePath), 'First edit\n');
+  const first = await f.publish(await f.prepare());
+  const worktree = path.join(f.root, '..', 'editor-worktree');
+  f.state.crlfWorktrees = true;
+  await f.git(['worktree', 'add', worktree, first.branch]);
+  await assert.rejects(f.prepare(), /checked out in a worktree/);
+  await f.git(['worktree', 'remove', worktree]);
+  await fs.writeFile(path.join(f.root, pagePath), 'Next edit\n');
+  const plan = await f.prepare();
+  await f.git(['worktree', 'add', worktree, first.branch]);
+  await assert.rejects(f.publish(plan), /checkout changed after the review/);
+  assert.equal(f.state.pushed, 1);
 });
 
 test('Git publication includes only the page and declared assets and preserves the user checkout and index', async t => {
@@ -124,7 +244,7 @@ test('Git excludes unrelated local commits and rejects a non-fast-forward push w
   const tree = (await f.git(['rev-parse', `${first.commit}^{tree}`])).trim();
   const external = (await f.git(['commit-tree', tree, '-p', first.commit], 'Someone else updated the PR\n')).trim();
   await f.git(['push', f.remote, `${external}:refs/heads/${first.branch}`]);
-  await assert.rejects(f.publish(next), /Pushing the editor branch failed/);
+  await assert.rejects(f.publish(next), /Pushing the editor branch \(git push\) failed/);
   assert.equal((await f.git(['ls-remote', f.remote, `refs/heads/${first.branch}`])).split('\t')[0], external);
 });
 

@@ -14,15 +14,19 @@ import { figureAtOffset, figureRanges, HANDOUT_STATUSES, handoutNeedsFixing, han
 const repository = path.resolve(import.meta.dirname, '..');
 const fixture = () => fs.readFile(path.join(repository, 'test/unit-fixtures/front-matter.md'), 'utf8');
 
-async function setup(t, { gitPublisher } = {}) {
+async function setup(t, { gitPublisher, crlf = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'handout-editor-'));
   let server;
   t.after(async () => { if (server) await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); await fs.rm(root, { recursive: true, force: true }); });
-  await fs.mkdir(path.join(root, 'handouts/section'), { recursive: true });
-  const source = (await fixture()).replace('Fixture body.', '<div class="custom">Keep **raw** HTML</div>\n\nFirst page.\n<!-- pagebreak -->\nSecond page.').replace('pageCount: 1', 'pageCount: 2');
+  for (const directory of ['handouts/section', 'templates', 'editor', 'assets/styles']) await fs.mkdir(path.join(root, directory), { recursive: true });
+  let source = (await fixture()).replace('Fixture body.', '<div class="custom">Keep **raw** HTML</div>\n\nFirst page.\n<!-- pagebreak -->\nSecond page.').replace('pageCount: 1', 'pageCount: 2');
+  if (crlf) source = source.replace(/\r?\n/g, '\r\n');
   await fs.writeFile(path.join(root, 'handouts/section/example.md'), source);
   const secondSource = source.replace('code: STH-001', 'code: STH-002').replace('title: Fixture', 'title: Second fixture');
   await fs.writeFile(path.join(root, 'handouts/section/second.md'), secondSource);
+  await fs.copyFile(path.join(repository, 'templates/handout.html'), path.join(root, 'templates/handout.html'));
+  for (const name of ['index.html', 'editor.js', 'editor.css', 'editor-model.js', 'preview-controls.js', 'library-controls.js', 'proof-controls.js', 'change-controls.js', 'change-model.js', 'navigation-controls.js', 'navigation-model.js', 'command-controls.js', 'link-controls.js', 'link-model.js', 'review-controls.js', 'review-model.js', 'git-controls.js']) await fs.copyFile(path.join(repository, 'editor', name), path.join(root, 'editor', name));
+  await fs.copyFile(path.join(repository, 'assets/styles/print.css'), path.join(root, 'assets/styles/print.css'));
   const assetDirectory = path.join(root, 'assets/handouts/STH-001');
   await fs.mkdir(assetDirectory, { recursive: true });
   await fs.writeFile(path.join(assetDirectory, 'route.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>Route</title><desc>A route marker</desc><circle cx="5" cy="5" r="4"/></svg>');
@@ -35,8 +39,8 @@ async function setup(t, { gitPublisher } = {}) {
   return { root, source, server, base: `http://127.0.0.1:${server.address().port}`, file: path.join(root, 'handouts/section/example.md') };
 }
 
-async function openEditor(t, { mode = 'source', gitPublisher } = {}) {
-  const context = await setup(t, { gitPublisher });
+async function openEditor(t, { mode = 'source', gitPublisher, crlf = false } = {}) {
+  const context = await setup(t, { gitPublisher, crlf });
   const browser = await puppeteer.launch(browserOptions());
   t.after(() => browser.close());
   const page = await browser.newPage();
@@ -70,6 +74,55 @@ async function saveWithShortcut(page, modifier) {
   await page.keyboard.up(modifier);
   await page.waitForFunction(() => document.querySelector('#state').textContent === 'Saved');
 }
+
+test('CRLF handouts open cleanly, expose details, and merge independent disk edits', { timeout: 60_000 }, async t => {
+  const { page, source, file, base } = await openEditor(t, { crlf: true });
+  const normalized = source.replace(/\r\n/g, '\n');
+  assert.equal(await value(page, '#source'), normalized);
+  assert.equal(await text(page, '#state'), 'Saved');
+  assert.equal(await fs.readFile(file, 'utf8'), source);
+  const details = await libraryPost(base, '/api/details', { path: 'handouts/section/example.md', source });
+  assert.equal(details.status, 200);
+  assert.equal(details.data.metadata.status, 'draft');
+  await replaceSource(page, normalized.replace('First page.', 'Your first paragraph.'));
+  const disk = source.replace('Second page.', 'Disk second paragraph.');
+  await fs.writeFile(file, disk);
+  await page.click('#review-changes');
+  await page.click('#changes-compare');
+  await page.waitForFunction(() => !document.querySelector('#changes-apply').disabled);
+  assert.equal(await page.$eval('#changes-conflicts', element => element.children.length), 0);
+  const merged = await value(page, '#changes-proposed');
+  assert.match(merged, /Your first paragraph/);
+  assert.match(merged, /Disk second paragraph/);
+  await page.click('#changes-apply');
+  assert.equal(await fs.readFile(file, 'utf8'), disk);
+  await page.click('#save');
+  await page.waitForFunction(() => document.querySelector('#state').textContent === 'Saved');
+  assert.equal(await fs.readFile(file, 'utf8'), merged);
+});
+
+test('legacy Windows browser drafts retain their CRLF merge baseline after portable path discovery', { timeout: 60_000 }, async t => {
+  const { page, source, file, base } = await openEditor(t, { crlf: true });
+  const opened = await (await fetch(base + '/api/handout?path=handouts/section/example.md')).json();
+  const key = 'handout-editor:draft:handouts\\section\\example.md';
+  await page.evaluate(({ key, source, revision }) => {
+    localStorage.setItem(key, JSON.stringify({ source: source.replace('First page.', 'Recovered first paragraph.'), baseSource: source, revision }));
+  }, { key, source, revision: opened.revision });
+  await fs.writeFile(file, source.replace('Second page.', 'External second paragraph.'));
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.waitForSelector('#draft-recovery:not([hidden])');
+  await page.click('#restore-draft');
+  assert.match(await value(page, '#source'), /Recovered first paragraph/);
+  await page.click('#compare-disk');
+  await page.waitForFunction(() => !document.querySelector('#changes-apply').disabled);
+  const merged = await value(page, '#changes-proposed');
+  assert.match(merged, /Recovered first paragraph/);
+  assert.match(merged, /External second paragraph/);
+  await page.click('#changes-apply');
+  await page.click('#save');
+  await page.waitForFunction(() => document.querySelector('#state').textContent === 'Saved');
+  assert.equal(await page.evaluate(key => localStorage.getItem(key), key), null);
+});
 
 test('editor source helpers report position and transform complete line selections', () => {
   assert.deepEqual(selectionDetails('one\ntwo words', 6, 9), { line: 2, column: 3, characters: 13, words: 3, selected: 3 });
@@ -1288,7 +1341,7 @@ test('creation rejects stale originals, invalid requests, and symlink destinatio
   assert.equal(traversal.status, 404);
   const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'editor-outside-'));
   t.after(() => fs.rm(outside, { recursive: true, force: true }));
-  await fs.symlink(outside, path.join(root, 'handouts/hands-on-skills'));
+  await fs.symlink(outside, path.join(root, 'handouts/hands-on-skills'), process.platform === 'win32' ? 'junction' : 'dir');
   const fresh = await (await fetch(base + '/api/handout?path=handouts/section/example.md')).json();
   const symlink = await libraryPost(base, '/api/handouts/new', { ...newHandoutRequest, sectionNumber: 6, sourcePath: fresh.path, revision: fresh.revision });
   assert.equal(symlink.status, 422);
@@ -1379,7 +1432,7 @@ async function canonicalProof(t, root, source) {
   t.after(() => fs.rm(output, { recursive: true, force: true }));
   const manifests = await loadAssetManifests(root);
   await prepareDirectories(root, output); await copyAssets(root, output, manifests);
-  const template = await fs.readFile(path.join(repository, 'templates/handout.html'), 'utf8');
+  const template = await fs.readFile(path.join(root, 'templates/handout.html'), 'utf8');
   const html = renderHandoutSource(template, source, { sourcePath: 'handouts/section/example.md', manifests });
   const document = parseHandoutSource(source, 'handouts/section/example.md', manifests);
   const file = path.join(output, 'html', `${document.meta.code}.html`); await fs.writeFile(file, html);

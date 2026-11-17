@@ -12,12 +12,57 @@ export function githubRemote(value) {
 }
 export function runGitCommand(command, args, { cwd, input, env = {}, label = command } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(command, args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1', GCM_INTERACTIVE: 'never', ...env }, timeout: 45_000, maxBuffer: 2_000_000, encoding: 'utf8' }, (error, stdout) => {
-      if (error) reject(fail(error.code === 'ENOENT' ? `${command} is not installed. Install it, then try again.` : `${label} failed. Check repository access and Git/GitHub CLI setup, then retry. Your saved files are preserved.`));
+    const environment = { ...process.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1', GCM_INTERACTIVE: 'never', ...env };
+    const child = execFile(command, args, { cwd, env: environment, timeout: 45_000, maxBuffer: 2_000_000, encoding: 'utf8' }, (error, stdout, stderr) => {
+      if (error) reject(fail(error.code === 'ENOENT' ? `${command} is not installed. Install it, then try again.` : command === 'gh' ? githubFailure(error, stderr, environment) : command === 'git' ? gitFailure(error, args, stderr, environment, label) : `${label} failed. Check repository access and Git/GitHub CLI setup, then retry. Your saved files are preserved.`));
       else resolve(stdout);
     });
     child.stdin.on('error', () => {}); child.stdin.end(input);
   });
+}
+
+export function gitFailure(error, args, stderr = '', environment = {}, label = 'git') {
+  const step = label === 'git' ? `git ${args[0]}` : `${label} (git ${args[0]})`;
+  let help;
+  if (error.killed) help = 'The command timed out. Check the connection for network commands, then retry.';
+  else if (/not a git repository/i.test(stderr)) help = 'Run the editor from the handout library’s Git checkout.';
+  else if (/dubious ownership|unsafe repository/i.test(stderr)) help = 'Git does not trust this checkout’s ownership. Review the ownership and Git safe.directory configuration on the machine running the editor.';
+  else if (/unable to auto-detect email|identity unknown|empty ident name/i.test(stderr)) help = 'Configure git config user.name and git config user.email in this checkout.';
+  else if (/authentication failed|could not read Username|terminal prompts disabled|permission denied \(publickey\)/i.test(stderr)) help = 'Git transport authentication failed. GitHub CLI access alone does not configure Git. For HTTPS, run gh auth setup-git --hostname github.com, then retry.';
+  else if (args[0] === 'merge-base' && error.code === 1 && !stderr.trim()) help = 'The local checkout and GitHub base branch have no common commit available. Check for a shallow checkout or unrelated history before syncing.';
+  else if (/unknown (?:option|switch)|unrecognized option/i.test(stderr)) help = 'Check git --version and update Git for Windows or your Git installation, then retry.';
+  else help = 'Run this Git step from the library checkout on the machine running the editor to investigate.';
+  // Show Git’s reason, but never echo command arguments (which can contain a
+  // remote credential) or environment credentials into the browser response.
+  let detail = stderr;
+  for (const [name, value] of Object.entries(environment)) {
+    if (/(?:TOKEN|PASSWORD|SECRET|CREDENTIAL|AUTHORIZATION|API_KEY)/i.test(name) && typeof value === 'string' && value.length >= 4) detail = detail.replaceAll(value, '[redacted]');
+  }
+  detail = detail.replace(/https?:\/\/[^\s/]*@/gi, 'https://[redacted]@')
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/g, '[redacted]')
+    .replace(/(authorization\s*:\s*)(?:basic|bearer)\s+\S+/gi, '$1[redacted]')
+    .replace(/([?&](?:access_token|token|password|secret)=)[^\s&]+/gi, '$1[redacted]')
+    .replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, 1200);
+  const code = typeof error.code === 'number' ? ` (exit ${error.code})` : /^[A-Z][A-Z0-9_]*$/.test(error.code || '') ? ` (${error.code})` : '';
+  return `${step} failed${code}. ${help}${detail ? ` Git reported: ${detail}` : ''} Your saved files are preserved.`;
+}
+
+export function githubFailure(error, stderr = '', environment = {}) {
+  // Classify known failures without returning CLI output, which may contain credentials.
+  let message;
+  if (error.killed) message = 'The GitHub request timed out. Check your connection and retry.';
+  else if (/HTTP 401|bad credentials|authentication token|gh auth login|not logged into/i.test(stderr)) {
+    const token = environment.GH_TOKEN ? 'GH_TOKEN' : environment.GITHUB_TOKEN ? 'GITHUB_TOKEN' : null;
+    message = token
+      ? `GitHub authentication failed. The editor is using ${token}, which overrides saved GitHub CLI credentials. Replace or unset it in the environment that starts the editor, then restart the editor. Check gh auth status on that machine.`
+      : 'GitHub authentication is missing or expired. Run gh auth login --hostname github.com on the machine running the editor, then retry.';
+  } else if (/rate limit/i.test(stderr)) message = 'GitHub rate limit reached. Wait for the limit to reset, then retry.';
+  else if (/saml|single sign.on|\bsso\b/i.test(stderr)) message = 'GitHub requires organization SSO authorization. Authorize the editor’s GitHub CLI credentials for the organization, then retry.';
+  else if (/HTTP 403|resource not accessible|HTTP 404|not found/i.test(stderr)) message = 'GitHub denied repository access. Check origin and run gh auth status on the machine running the editor. The signed-in account or token needs repository write access and permission to create pull requests.';
+  else if (/HTTP 5\d\d/i.test(stderr)) message = 'GitHub is temporarily unavailable. Retry in a few minutes.';
+  else if (/could not resolve|no such host|dial tcp|connection refused|connection reset|network is unreachable|TLS|certificate|proxy|Forbidden|\bGet "https:\/\/api\.github\.com/i.test(stderr)) message = 'The editor could not connect to the GitHub API. Check the network, proxy, firewall, and environment access to api.github.com, then retry.';
+  else message = 'GitHub request failed. Run gh auth status and gh api repos/OWNER/REPO (using the origin repository) on the machine running the editor to diagnose access, then retry.';
+  return `${message} Your saved files are preserved.`;
 }
 
 export function createGitPublisher({ run = runGitCommand } = {}) {
@@ -35,7 +80,7 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
     if (await fs.realpath(top.trim()) !== root) throw fail('The handout library must be its own Git checkout.');
     if ((await git(root, ['ls-files', '--unmerged'])).trim()) throw fail('Resolve the current Git merge before publishing from the editor.');
     const remote = (await git(root, ['remote', 'get-url', 'origin'])).trim(), name = githubRemote(remote);
-    const pushUrls = (await git(root, ['remote', 'get-url', '--push', '--all', 'origin'])).trim().split('\n');
+    const pushUrls = (await git(root, ['remote', 'get-url', '--push', '--all', 'origin'])).trim().split(/\r?\n/);
     if (pushUrls.length !== 1 || githubRemote(pushUrls[0]) !== name) throw fail('Origin fetch and push must point to the same GitHub repository.');
     const pushRemote = pushUrls[0];
     if (githubRemote((await git(root, ['ls-remote', '--get-url', pushRemote])).trim()) !== name) throw fail('Git URL rewriting changes the push repository. Resolve that configuration before publishing.');
@@ -48,11 +93,19 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
     const common = await fs.realpath(path.resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).trim()));
     if (target.private && target.publicRoot && (common === path.resolve(target.publicRoot) || common.startsWith(path.resolve(target.publicRoot) + path.sep))) throw fail('The private library must use a separate Git repository outside the public checkout.');
     const stateDir = path.join(common, 'handout-editor'); await fs.mkdir(stateDir, { recursive: true, mode: 0o700 });
-    const stateFile = path.join(stateDir, hash(target.path) + '.json');
-    const stateText = await fs.readFile(stateFile, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
+    let stateFile = path.join(stateDir, hash(target.path) + '.json');
+    const readState = file => fs.readFile(file, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
+    let stateText = await readState(stateFile);
+    // Older Windows versions keyed state by the native source path. Retain
+    // that file and branch when discovery starts returning portable paths.
+    if (!stateText && target.path.includes('/')) {
+      const legacyFile = path.join(stateDir, hash(target.path.replaceAll('/', '\\')) + '.json');
+      const legacyText = await readState(legacyFile);
+      if (legacyText) { stateFile = legacyFile; stateText = legacyText; }
+    }
     const state = stateText ? JSON.parse(stateText) : null;
     if (state && (![state.commit, state.baseCommit, ...(state.pushed ? [state.pushed] : [])].every(value => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value)) || state.number !== undefined && (!Number.isSafeInteger(state.number) || state.number < 1))) throw fail('Stored editor Git state is invalid. Restore it before publishing.');
-    if (state && (state.repository !== name || state.path !== target.path || !/^editor\/handout-[A-Z]{3}-\d{3}-[a-f0-9]{12}$/.test(state.branch))) throw fail('Stored editor branch information does not match this repository.');
+    if (state && (state.repository !== name || typeof state.path !== 'string' || state.path.replaceAll('\\', '/') !== target.path.replaceAll('\\', '/') || !/^editor\/handout-[A-Z]{3}-\d{3}-[a-f0-9]{12}$/.test(state.branch))) throw fail('Stored editor branch information does not match this repository.');
     return { root, remote, pushRemote, name, repo, stateDir, stateFile, state, stateHash: hash(stateText), head: (await git(root, ['rev-parse', 'HEAD'])).trim() };
   }
   async function readFile(root, relative) {
@@ -93,7 +146,11 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
     try { await git(info.root, ['fetch', '--no-tags', 'origin', `refs/heads/${base}:${ref}`], { label: 'Fetching the GitHub base branch' }); baseCommit = (await git(info.root, ['rev-parse', ref])).trim(); }
     finally { await git(info.root, ['update-ref', '-d', ref]).catch(() => {}); }
     const baseline = updating ? info.state.baseCommit : oldPr?.merged_at ? info.state.commit : info.state && oldPr?.state === 'closed' ? info.state.baseCommit : (await git(info.root, ['merge-base', info.head, baseCommit])).trim();
-    const assetDir = `assets/handouts/${target.code}`, scope = [target.path, assetDir];
+    // Git tree/index paths always use '/', even when the editor identifies a
+    // source with Windows separators. Keep target.path for editor verification
+    // and durable workflow state, which use the original library identifier.
+    const sourcePath = target.path.replaceAll('\\', '/');
+    const assetDir = `assets/handouts/${target.code}`, scope = [sourcePath, assetDir];
     if ((await git(info.root, ['diff', '--no-ext-diff', '--no-textconv', '--name-only', baseline, baseCommit, '--', ...scope])).trim()) throw fail('This handout or its assets changed on GitHub since your local baseline. Sync and review those changes before publishing; nothing was overwritten.');
     const parent = updating ? info.state.commit : baseCommit;
     const branch = updating ? info.state.branch : `editor/handout-${target.code}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -102,8 +159,8 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
       if (local !== info.state.commit) throw fail('The local editor branch changed outside this workflow. Review it before retrying.');
     }
     const worktrees = await git(info.root, ['worktree', 'list', '--porcelain']);
-    if (worktrees.split('\n').includes(`branch refs/heads/${branch}`)) throw fail('This editor branch is checked out in a worktree. Switch that worktree before publishing.');
-    const files = new Set([target.path, `${assetDir}/manifest.json`]);
+    if (worktrees.split(/\r?\n/).includes(`branch refs/heads/${branch}`)) throw fail('This editor branch is checked out in a worktree. Switch that worktree before publishing.');
+    const files = new Set([sourcePath, `${assetDir}/manifest.json`]);
     for (const manifest of [await readFile(info.root, `${assetDir}/manifest.json`), await storedFile(info.root, parent, `${assetDir}/manifest.json`)]) {
       if (!manifest) continue;
       for (const entry of JSON.parse(manifest.toString()).assets || []) {
@@ -119,7 +176,7 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
       await git(info.root, ['read-tree', parent], { env });
       for (const file of files) {
         const bytes = await readFile(info.root, file); snapshots.push({ file, hash: bytes ? hash(bytes) : null });
-        if (file === target.path && (!bytes || hash(bytes) !== target.revision)) throw fail('The saved handout changed. Save and prepare it again.');
+        if (file === sourcePath && (!bytes || hash(bytes) !== target.revision)) throw fail('The saved handout changed. Save and prepare it again.');
         if (!bytes) { await git(info.root, ['update-index', '--force-remove', '--', file], { env }); continue; }
         size += bytes.length; if (size > 30_000_000) throw fail('The handout and assets exceed the 30 MB editor publication limit.');
         const tracked = await git(info.root, ['ls-tree', parent, '--', file]);
@@ -127,14 +184,14 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
           const ignored = await git(info.root, ['ls-files', '--others', '--ignored', '--exclude-standard', '--', file]);
           if (ignored.trim()) throw fail('A required handout or asset file is ignored by Git. Resolve that ignore rule before publishing.');
         }
-        const blob = (await git(info.root, ['hash-object', '-w', '--stdin'], { input: bytes })).trim();
+        const blob = (await git(info.root, ['hash-object', '-w', `--path=${file}`, '--stdin'], { input: bytes })).trim();
         await git(info.root, ['update-index', '--add', '--cacheinfo', tracked.startsWith('100755') ? '100755' : '100644', blob, file], { env });
       }
       tree = (await git(info.root, ['write-tree'], { env })).trim();
       changed = Boolean((await git(info.root, ['diff', '--name-only', parent, tree, '--', ...scope])).trim());
       names = (await git(info.root, ['diff', '--no-renames', '--name-only', '-z', baseCommit, tree, '--', ...scope])).split('\0').filter(Boolean);
       if (!names.length && !updating) throw fail('These saved files already match GitHub. There is nothing to publish.');
-      patch = await git(info.root, ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', baseCommit, tree, '--', target.path, `${assetDir}/manifest.json`]);
+      patch = await git(info.root, ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', baseCommit, tree, '--', sourcePath, `${assetDir}/manifest.json`]);
       if (patch.length > 150_000) throw fail('The text diff is too large to review in the editor. Use the normal Git workflow for this change.');
       diff = await git(info.root, ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--stat', baseCommit, tree, '--', ...scope]);
     } finally { await fs.rm(directory, { recursive: true, force: true }); }
@@ -157,7 +214,7 @@ export function createGitPublisher({ run = runGitCommand } = {}) {
     try {
       // Recheck the durable state after acquiring the cross-process lock.
       if (hash(await fs.readFile(info.stateFile, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; })) !== info.stateHash) throw fail('Another publication finished. Prepare the handout again.');
-      if ((await git(info.root, ['rev-parse', 'HEAD'])).trim() !== info.head || (await git(info.root, ['worktree', 'list', '--porcelain'])).split('\n').includes(`branch refs/heads/${plan.branch}`)) throw fail('A checkout changed after the review. Prepare the handout again.');
+      if ((await git(info.root, ['rev-parse', 'HEAD'])).trim() !== info.head || (await git(info.root, ['worktree', 'list', '--porcelain'])).split(/\r?\n/).includes(`branch refs/heads/${plan.branch}`)) throw fail('A checkout changed after the review. Prepare the handout again.');
       let commit = plan.parent;
       if (plan.changed) {
         const sign = (await git(info.root, ['config', '--type=bool', '--default=false', '--get', 'commit.gpgsign'])).trim() === 'true';

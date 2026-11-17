@@ -107,7 +107,7 @@ accessibility warnings remain visible. Click a source-mapped finding to return t
 the affected line. **Cancel build** stops an active job. Closing the dialog keeps
 the build running so you can continue editing.
 
-Proofs use the same pinned browser, fonts, PDF settings, timestamp normalization,
+Proofs use the same pinned browser, system font stack, PDF settings, timestamp normalization,
 and single-handout print checks as the command-line renderer. Approved handouts must also pass the
 existing proof-record and exact-checksum checks. Ready PDFs are kept in memory
 for up to 15 minutes and are accessible only to the editor session that built them.
@@ -170,6 +170,13 @@ git config user.email "you@example.org"
 gh auth login --hostname github.com
 gh auth setup-git --hostname github.com
 ```
+
+Run these commands on the machine running the editor. Use `gh auth status` and
+`gh api repos/OWNER/REPO` (substituting the origin repository) to diagnose access.
+`GH_TOKEN` and `GITHUB_TOKEN` override saved GitHub CLI credentials. If an
+environment token is invalid or lacks repository and pull request write access,
+replace or unset it in the editor's launch environment, then restart the editor.
+The environment must also allow requests to `api.github.com`.
 
 The origin's fetch and push URLs must identify the same repository. Your account
 needs write access. Private handouts use their separate private checkout and

@@ -22,6 +22,9 @@ async function setup(t, { publicOnly = false, gitPublisher } = {}) {
   await fs.writeFile(path.join(root, handoutPath), publicSource);
   await fs.writeFile(path.join(privateRoot, handoutPath), privateSource);
   await fs.writeFile(path.join(root, 'handouts/start-here/public.md'), fixture.replace('STH-001', 'STH-002'));
+  for (const dir of ['templates', 'editor', 'assets/styles']) {
+    await fs.cp(path.join(repository, dir), path.join(root, dir), { recursive: true });
+  }
   const assets = path.join(privateRoot, 'assets/handouts/STH-001');
   await fs.mkdir(assets, { recursive: true });
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>Test map</title><rect width="10" height="10"/></svg>';

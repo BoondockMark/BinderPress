@@ -19,7 +19,7 @@
     "start": "node bin/binderpress.mjs editor"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "puppeteer": "25.12.0"
@@ -38,7 +38,6 @@
     "editor/",
     "templates/",
     "assets/styles/",
-    "assets/fonts/",
     "test/fixtures/components.html",
     "test/fixtures/baseline.css",
     "README.md",

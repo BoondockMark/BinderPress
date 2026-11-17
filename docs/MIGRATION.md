@@ -9,10 +9,13 @@
    commands with `binderpress build`, `binderpress check`, `binderpress editor`,
    `binderpress lint:layout`, `binderpress preview`, and `binderpress setup:private`.
 4. Run `binderpress check --public`. This compares regenerated PDFs and indexes
-   with the existing committed artifacts without replacing them. Inspect preview
+   with the existing committed artifacts without replacing them. With system
+   fonts, run this check in the Linux release environment. For local migration
+   verification, compare fresh builds from upstream and the extracted application
+   on the same machine. Inspect preview
    differences separately before adopting a changed application design.
 5. Remove application scripts, editor files, templates, shared print styles,
-   fonts, and application tests from the content repository. Keep handouts,
+   and application tests from the content repository. Keep handouts,
    authored graphics, content integration tests, review records, contributor
    policies, generated proofs, and publishing instructions. The `FIX-00` visual
    fixture and its assets belong to the application.
