@@ -365,7 +365,7 @@ test('Git editor routes private handouts to their private checkout and rejects s
   await page.select('#handout', handoutPath); await page.waitForFunction(() => document.querySelector('#source').value.includes('PRIVATE TEST RECORD'));
   await page.click('#save-pr'); await page.click('#git-prepare');
   await page.waitForFunction(() => document.querySelector('#git-state').textContent.includes('Ready to publish'));
-  assert.equal(calls[0].root, privateRoot); assert.equal(calls[0].publicRoot, root); assert.equal(calls[0].private, true);
+  assert.equal(calls[0].root, await fs.realpath(privateRoot)); assert.equal(calls[0].publicRoot, root); assert.equal(calls[0].private, true);
   assert.match(await page.$eval('#git-target', element => element.textContent), /Private repository/);
   await page.keyboard.press('Escape'); await page.waitForFunction(() => document.querySelector('#git-patch').textContent === '');
   assert.deepEqual(await page.evaluate(() => Object.keys(localStorage)), []);

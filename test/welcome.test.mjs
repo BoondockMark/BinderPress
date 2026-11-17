@@ -33,7 +33,7 @@ test('new binders contain independent configuration and a valid first draft; exi
   assert.equal(result.data.url, '/editor');
   assert.deepEqual((await fs.readdir(directory)).sort(), ['.gitignore', 'README.md', 'binderpress.config.json', 'handouts']);
   const context = await (await fetch(base + '/api/workspace')).json();
-  assert.equal(context.title, 'Club Handbook'); assert.equal(context.root, directory);
+  assert.equal(context.title, 'Club Handbook'); assert.equal(context.root, await fs.realpath(directory));
   assert.equal(context.firstRun, true); assert.equal(context.sample, false); assert.equal(context.launcher, true);
   const documents = await (await fetch(base + '/api/handouts')).json();
   assert.equal(documents[0].code, 'MEM-001'); assert.equal(documents[0].status, 'draft');
@@ -68,7 +68,7 @@ test('opening a different binder reloads sections in a separate process and fail
   const invalid = await post('open', { directory: temporary });
   assert.equal(invalid.status, 422); assert.match(invalid.data.error, /no binderpress.config.json/);
   context = await (await fetch(base + '/api/workspace')).json();
-  assert.equal(context.root, directory);
+  assert.equal(context.root, await fs.realpath(directory));
 });
 
 test('private mode requires the linked checkout and the public selection ignores a broken local link', async t => {
@@ -79,6 +79,21 @@ test('private mode requires the linked checkout and the public selection ignores
   assert.equal((await post('open', { directory, privateMode: true })).status, 422);
   assert.equal((await post('open', { directory, privateMode: false })).status, 200);
   assert.equal((await (await fetch(base + '/api/workspace')).json()).private, false);
+});
+
+test('opening a folder alias keeps the same canonical binder and draft identity', async t => {
+  const { temporary, post, base } = await setup(t);
+  const directory = path.join(temporary, 'Actual binder'), alias = path.join(temporary, 'Folder alias');
+  await createBinder(definition(directory), { appRoot: APP_ROOT });
+  try { await fs.symlink(directory, alias, process.platform === 'win32' ? 'junction' : 'dir'); }
+  catch (error) { if (process.platform === 'win32' && error.code === 'EPERM') { t.skip('Folder links are unavailable on this Windows runner'); return; } throw error; }
+  const opened = await post('open', { directory: alias });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.root, await fs.realpath(directory));
+  const identity = html => html.match(/name="binderpress-drafts" content="([^"]+)"/)[1];
+  const before = identity(await (await fetch(base + '/editor')).text());
+  assert.equal((await post('open', { directory })).status, 200);
+  assert.equal(identity(await (await fetch(base + '/editor')).text()), before);
 });
 
 test('welcome routes reject foreign origins, host rebinding, missing tokens, and oversized requests', async t => {
@@ -141,7 +156,7 @@ test('folder browsing uses server paths and does not offer hidden or non-directo
   await fs.mkdir(path.join(temporary, '.hidden'));
   await fs.writeFile(path.join(temporary, 'file.md'), 'file');
   const result = await post('browse', { path: temporary });
-  assert.equal(result.status, 200); assert.equal(result.data.path, temporary);
+  assert.equal(result.status, 200); assert.equal(result.data.path, await fs.realpath(temporary));
   assert.deepEqual(result.data.folders.map(folder => folder.name), ['Visible folder']);
 });
 
