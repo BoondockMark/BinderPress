@@ -1,3 +1,4 @@
+import { respondToDialog } from './helpers/dialog.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -12,7 +13,7 @@ const handoutPath = 'handouts/start-here/record.md';
 async function setup(t, { publicOnly = false, gitPublisher } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'private-editor-'));
   let server;
-  t.after(async () => { if (server) await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); await fs.rm(directory, { recursive: true, force: true }); });
+  t.after(async () => { if (server) await server.dispose(); await fs.rm(directory, { recursive: true, force: true }); });
   const root = path.join(directory, 'public');
   const privateRoot = path.join(directory, 'private');
   const fixture = await fs.readFile(path.join(repository, 'test/unit-fixtures/front-matter.md'), 'utf8');
@@ -39,11 +40,11 @@ async function setup(t, { publicOnly = false, gitPublisher } = {}) {
     const response = await fetch(base + url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) });
     return { response, data: await response.json() };
   };
-  return { root, privateRoot, base, get, post, publicSource, privateSource, svg };
+  return { root, privateRoot, base, get, post, publicSource, privateSource, svg, server };
 }
 
 test('private editor loads, previews, validates, and saves replacements to the private library', async t => {
-  const { root, privateRoot, base, get, post, publicSource, privateSource, svg } = await setup(t);
+  const { root, privateRoot, base, get, post, publicSource, privateSource, svg, server } = await setup(t);
   const opened = await get(`/api/handout?path=${handoutPath}`);
   assert.equal(opened.private, true);
   assert.equal(opened.source, privateSource);
@@ -74,6 +75,8 @@ test('private editor loads, previews, validates, and saves replacements to the p
   assert.equal(deleted.status, 200);
   await assert.rejects(fs.access(path.join(privateRoot, 'assets/handouts/STH-001/extra-map.svg.base64')));
   await assert.rejects(fs.access(path.join(root, 'assets/handouts/STH-001')));
+  await server.dispose();
+  assert.deepEqual(await fs.readdir(path.join(privateRoot, 'build/editor')), []);
 });
 
 test('public editor override keeps placeholders and refuses private graphics', async t => {
@@ -140,7 +143,7 @@ test('private duplication keeps titles, body, images, and credits out of the pub
   assert.equal(await fs.readFile(path.join(privateRoot, handoutPath), 'utf8'), privateSource);
   const publicServer = await createEditorServer({ root, publicOnly: true });
   await new Promise(resolve => publicServer.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { publicServer.closeAllConnections(); publicServer.close(resolve); }));
+  t.after(() => publicServer.dispose());
   const publicBase = `http://127.0.0.1:${publicServer.address().port}`;
   const publicCopy = await (await fetch(publicBase + '/api/handout?path=' + copied.data.path)).json();
   assert.equal(publicCopy.source, placeholder);
@@ -197,7 +200,7 @@ test('private PDF proof downloads are session scoped and leave no public artifac
   assert.equal((await fs.readdir(path.join(privateRoot, 'build/editor'))).some(name => name.startsWith('handout-proof-')), false);
   const publicServer = await createEditorServer({ root, publicOnly: true });
   await new Promise(resolve => publicServer.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => { publicServer.closeAllConnections(); publicServer.close(resolve); }));
+  t.after(() => publicServer.dispose());
   const denied = await fetch(`http://127.0.0.1:${publicServer.address().port}/api/proofs/download`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: job.id, session }) });
   assert.equal(denied.status, 404);
 });
@@ -266,8 +269,7 @@ test('private navigation and replacement stay in memory and clear when switching
   assert.deepEqual(await page.evaluate(() => Object.keys(localStorage)), []);
   assert.equal(await fs.readFile(path.join(privateRoot, handoutPath), 'utf8'), privateSource);
   assert.equal(await fs.readFile(path.join(root, handoutPath), 'utf8'), publicSource);
-  page.once('dialog', dialog => dialog.accept());
-  await page.select('#handout', 'handouts/start-here/public.md');
+  await respondToDialog(page, 'accept', () => page.select('#handout', 'handouts/start-here/public.md'));
   await page.waitForFunction(() => document.querySelector('#source').value.includes('STH-002'));
   assert.equal(await page.$eval('#find-query', element => element.value), '');
   assert.equal(await page.$eval('#find-replacement', element => element.value), '');

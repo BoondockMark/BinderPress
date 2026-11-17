@@ -5,10 +5,11 @@ try {
   const server = await createEditorServer({ root: CONTENT_ROOT, ...contentMode(), launcher: true, firstRun: process.env.BINDERPRESS_FIRST_RUN === '1', workspaceId: process.env.BINDERPRESS_WORKSPACE_ID });
   server.listen(0, '127.0.0.1', () => process.send?.({ type: 'ready', port: server.address().port, root: CONTENT_ROOT, title: CONFIG.title }));
   let closing = false;
-  const stop = () => {
+  const stop = async () => {
     if (closing) return; closing = true;
-    server.closeAllConnections();
-    server.close(() => { if (process.connected) process.disconnect(); });
+    try { await server.dispose(); }
+    catch (error) { console.error(`Editor cleanup failed: ${error.message}`); process.exitCode = 1; }
+    finally { if (process.connected) process.disconnect(); }
   };
   process.on('SIGTERM', stop);
   process.on('disconnect', stop);

@@ -21,7 +21,7 @@ export function createWelcomeServer({ appRoot = applicationRoot, baseDirectory =
   async function stop(child) {
     if (!child || child.exitCode !== null) return;
     await new Promise(resolve => {
-      const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 5000);
+      const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 35000);
       child.once('exit', () => { clearTimeout(timer); resolve(); });
       if (child.connected) child.send({ type: 'shutdown' }, error => { if (error) child.kill('SIGTERM'); });
       else child.kill('SIGTERM');

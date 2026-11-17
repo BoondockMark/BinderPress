@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { execFile } from 'node:child_process';
 
 const versionOf = command => new Promise(resolve => {
-  execFile(command, ['--version'], { timeout: 3000, maxBuffer: 2048, windowsHide: true }, (error, stdout) => {
+  execFile(command, ['--version'], { timeout: 3000, maxBuffer: 2048, windowsHide: true, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: '1', GH_NO_EXTENSION_UPDATE_NOTIFIER: '1', GH_PROMPT_DISABLED: '1' } }, (error, stdout) => {
     const version = stdout?.match(command === 'git' ? /^git version [\d.]+/ : /^gh version [\d.]+/)?.[0];
     resolve(error ? null : version || 'Installed');
   });

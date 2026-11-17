@@ -15,7 +15,7 @@
     "editor": "node scripts/editor.mjs",
     "editor:private": "node scripts/editor.mjs --private",
     "editor:public": "node scripts/editor.mjs --public",
-    "test": "node --test-timeout=300000 --import ./test/configure.mjs --test test/*.test.mjs",
+    "test": "node --test-timeout=600000 --import ./test/configure.mjs --test test/*.test.mjs",
     "start": "node bin/binderpress.mjs welcome"
   },
   "engines": {

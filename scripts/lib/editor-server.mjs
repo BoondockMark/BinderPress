@@ -98,6 +98,9 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
   let browser;
   let resourcesPromise;
   let closing = false;
+  let cleanupPromise;
+  const validations = new Set();
+  const requests = new Set();
   async function validationResources() {
     if (closing) throw Object.assign(Error('Editor server is closing'), { status: 503 });
     resourcesPromise ??= (async () => {
@@ -148,7 +151,14 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
     response.end(contents);
   }
 
-  async function validateSource(value) {
+  function validateSource(value) {
+    const task = runValidation(value);
+    validations.add(task);
+    task.then(() => validations.delete(task), () => validations.delete(task));
+    return task;
+  }
+  async function runValidation(value) {
+    if (closing) throw Object.assign(Error('Editor server is closing'), { status: 503 });
     const session = typeof value.session === 'string' ? value.session : 'default';
     const requestId = Number.isSafeInteger(value.requestId) ? value.requestId : (validationGeneration.get(session) ?? 0) + 1;
     validationGeneration.set(session, Math.max(validationGeneration.get(session) ?? 0, requestId));
@@ -164,6 +174,7 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
     }
     const generation = requestId;
     const resources = await validationResources();
+    if (closing) throw Object.assign(Error('Editor server is closing'), { status: 503 });
     while (resources.assetManifests !== manifests) {
       const current = manifests;
       resources.assetRefresh ??= copyAssets(root, resources.validationRoot, current)
@@ -243,7 +254,12 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
     return { root: record.contentRoot || root, publicRoot: root, private: value.private, path: value.path, code: meta.code, revision: value.revision };
   }
 
-  const server = http.createServer(async (request, response) => {
+  const server = http.createServer((request, response) => {
+    const task = handleRequest(request, response);
+    requests.add(task);
+    task.then(() => requests.delete(task), () => requests.delete(task));
+  });
+  async function handleRequest(request, response) {
     try {
       const url = new URL(request.url, 'http://127.0.0.1');
       if (request.method === 'GET' && url.pathname === '/api/workspace') return json(response, 200, {
@@ -456,17 +472,39 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
     } catch (error) {
       json(response, error.status ?? (error instanceof SyntaxError ? 400 : 422), { error: error.message });
     }
-  });
-  server.on('close', () => {
+  }
+  function cleanup() {
+    if (cleanupPromise) return cleanupPromise;
     closing = true; reviewGeneration++;
-    proofs.close().catch(() => {});
-    // A browser launch may still be in flight when the HTTP connections close.
-    // Wait for it before closing the browser and deleting its private work area.
-    Promise.resolve(resourcesPromise).catch(() => {}).then(async () => {
-      await browser?.close().catch(() => {});
-      if (validationRoot) await fs.rm(validationRoot, { recursive: true, force: true }).catch(() => {});
-      await fs.rm(stagingRoot, { recursive: true, force: true }).catch(() => {});
-    }).catch(() => {});
-  });
+    cleanupPromise = (async () => {
+      // Launch can finish after the HTTP sockets close. Close that browser too,
+      // then wait for validators to finish before removing their files.
+      const results = await Promise.allSettled([proofs.close(), (async () => {
+        await Promise.resolve(resourcesPromise).catch(() => {});
+        await browser?.close();
+        await Promise.allSettled([...validations]);
+      })()]);
+      await Promise.allSettled([...requests]);
+      await Promise.allSettled([...saves.values(), libraryOperation]);
+      for (const result of results) if (result.status === 'rejected') throw result.reason;
+      const removal = { recursive: true, force: true, maxRetries: 5, retryDelay: 100 };
+      if (validationRoot) await fs.rm(validationRoot, removal);
+      await fs.rm(stagingRoot, removal);
+    })();
+    // Native close remains supported, while dispose lets owners await cleanup.
+    cleanupPromise.catch(() => {});
+    return cleanupPromise;
+  }
+  server.on('close', cleanup);
+  let disposal;
+  server.dispose = () => disposal ??= (async () => {
+    closing = true;
+    if (server.listening) {
+      const stopped = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      server.closeAllConnections();
+      await stopped;
+    }
+    await cleanup();
+  })();
   return server;
 }
