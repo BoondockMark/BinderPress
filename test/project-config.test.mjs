@@ -4,9 +4,41 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { APP_ROOT, validateConfig } from '../scripts/lib/project-config.mjs';
+import { APP_ROOT, contentMode, validateConfig } from '../scripts/lib/project-config.mjs';
 
 const config = () => ({ title: 'Club Handbook', sections: [{ title: 'Membership', code: 'MEM', folder: 'membership' }] });
+
+test('starter defaults to public content while explicit private mode and external libraries retain their behavior', () => {
+  const starter = path.join(APP_ROOT, 'examples/starter');
+  assert.deepEqual(contentMode(starter, []), { publicOnly: true, requirePrivate: false });
+  assert.deepEqual(contentMode(starter, ['--private']), { publicOnly: false, requirePrivate: true });
+  assert.deepEqual(contentMode(starter, ['--private', '--public']), { publicOnly: true, requirePrivate: true });
+  assert.deepEqual(contentMode(path.join(APP_ROOT, 'other-content'), []), { publicOnly: false, requirePrivate: false });
+});
+
+test('starter loads with an inherited private path and reports how to fix an explicit missing private library', () => {
+  const env = { ...process.env, BINDER_PRIVATE_DIR: '../Emergency-Preparedness-Private' };
+  delete env.BINDERPRESS_CONFIG;
+  delete env.BINDERPRESS_CONTENT_DIR;
+  const probe = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { CONTENT_ROOT, contentMode } from './scripts/lib/project-config.mjs';
+    import { loadBuildContent } from './scripts/lib/private-content.mjs';
+    import { createEditorServer } from './scripts/lib/editor-server.mjs';
+    const loaded = await loadBuildContent(CONTENT_ROOT, contentMode());
+    assert.equal(loaded.privateRoot, undefined);
+    assert.deepEqual(loaded.documents.map(document => document.meta.code), ['GET-001']);
+    const server = await createEditorServer({ root: CONTENT_ROOT, ...contentMode() });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const list = await (await fetch('http://127.0.0.1:' + server.address().port + '/api/handouts')).json();
+      assert.equal(list[0].code, 'GET-001');
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    await assert.rejects(loadBuildContent(CONTENT_ROOT, contentMode(CONTENT_ROOT, ['--private'])), error =>
+      error.code === 'ENOENT' && /BINDER_PRIVATE_DIR/.test(error.message) && /--public/.test(error.message));
+  `], { cwd: APP_ROOT, env, encoding: 'utf8', timeout: 30000 });
+  assert.equal(probe.status, 0, probe.stderr);
+});
 
 test('configuration supports independent binder identities and rejects unsafe or ambiguous sections', () => {
   const result = validateConfig(config());

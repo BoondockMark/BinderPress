@@ -29,6 +29,16 @@ application root, the example handbook is selected automatically. Build it with:
 node bin/binderpress.mjs build --public
 ```
 
+The bundled starter defaults to public mode, ignoring private-library environment
+settings and saved links from other projects. Use `--private` explicitly to test
+a private library with the starter. Independent content folders retain their
+normal linked-private-library behavior.
+
+If an older clone reports a missing private path while opening the sample, run
+`npm start -- --public`. Relative `BINDER_PRIVATE_DIR` values are resolved from
+the selected content folder, not from the application folder. In Windows Command
+Prompt, `set BINDER_PRIVATE_DIR=` clears that variable for the current terminal.
+
 The sample is a draft and contains no approved advice. Inspect the generated
 PDFs in `examples/starter/docs/pdfs/` and PNG proofs in `docs/previews/` beneath
 that same content directory.

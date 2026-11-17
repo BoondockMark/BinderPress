@@ -1,4 +1,4 @@
-import { CONTENT_ROOT, APP_ROOT } from './lib/project-config.mjs';
+import { CONTENT_ROOT, APP_ROOT, contentMode } from './lib/project-config.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,10 +21,7 @@ if (updateVisuals) {
   );
 }
 
-const { manifests, documents, privateRoot } = await loadBuildContent(root, {
-  publicOnly: process.argv.includes('--public'),
-  requirePrivate: process.argv.includes('--private')
-});
+const { manifests, documents, privateRoot } = await loadBuildContent(root, contentMode());
 const outputRoot = privateRoot
   ? path.join(privateRoot, 'build/binder')
   : checkOnly
