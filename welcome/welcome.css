@@ -25,6 +25,23 @@ h1 { font-family: Georgia, serif; font-weight: 500; font-size: clamp(36px, 5vw, 
 .choice-action { width: 100%; margin-top: auto; padding-top: 26px; color: var(--green); font-size: 13px; font-weight: 650; display: flex; justify-content: space-between; }
 .featured { background: #e9f0e8; border-color: #aabfae; }
 .quiet-note { font-size: 12px; color: var(--muted); margin: 27px 0 0; }
+.setup-links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 10px; font-size: 13px; }
+.setup-links a, .setup-result a { color: var(--green); }
+.setup-list { padding: 0; list-style: none; }
+.setup-result { padding: 15px 0; border-top: 1px solid var(--line); }
+.setup-result p { margin: 7px 0; font-size: 13px; }
+.setup-heading { display: flex; justify-content: space-between; gap: 15px; align-items: start; }
+.setup-badge { font-size: 11px; background: #f2e7d8; color: #75501e; border-radius: 4px; padding: 3px 7px; white-space: nowrap; }
+.setup-badge.ready { color: #235840; background: #e4efe1; }
+.setup-badge.optional { color: #53675b; background: #edf0eb; }
+.setup-path { overflow-wrap: anywhere; color: var(--muted); }
+.setup-command { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #f2f4ed; padding: 10px; border-radius: 5px; }
+.setup-command code { overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; font-size: 13px; user-select: all; }
+.setup-command button { font-size: 12px; padding: 7px 9px; }
+#github-setup { margin: 22px 0; font-size: 13px; }
+#github-setup summary { color: var(--green); font-weight: 650; cursor: pointer; }
+#github-setup pre { padding: 12px; background: #f2f4ed; overflow-x: auto; }
+#setup-summary { color: var(--muted); font-size: 14px; }
 .resume { display: inline-block; background: #e9f0e8; color: var(--green); padding: 12px 18px; border-radius: 8px; text-decoration: none; }
 footer { max-width: 1160px; margin: auto; padding: 22px 32px 30px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 20px; font-size: 12px; color: var(--muted); }
 .form-view { max-width: 740px; }

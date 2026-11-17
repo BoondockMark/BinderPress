@@ -1,3 +1,4 @@
+import { respondToDialog } from './helpers/dialog.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -17,7 +18,7 @@ const fixture = () => fs.readFile(path.join(repository, 'test/unit-fixtures/fron
 async function setup(t, { gitPublisher, crlf = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'handout-editor-'));
   let server;
-  t.after(async () => { if (server) await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); await fs.rm(root, { recursive: true, force: true }); });
+  t.after(async () => { if (server) await server.dispose(); await fs.rm(root, { recursive: true, force: true }); });
   for (const directory of ['handouts/section', 'templates', 'editor', 'assets/styles']) await fs.mkdir(path.join(root, directory), { recursive: true });
   let source = (await fixture()).replace('Fixture body.', '<div class="custom">Keep **raw** HTML</div>\n\nFirst page.\n<!-- pagebreak -->\nSecond page.').replace('pageCount: 1', 'pageCount: 2');
   if (crlf) source = source.replace(/\r?\n/g, '\r\n');
@@ -542,8 +543,7 @@ test('browser editor refuses invalid approved handouts and focuses Validation', 
 test('browser editor cancels invalid saves and focuses Validation', { timeout: 45_000 }, async t => {
   const { page, file, source: original } = await openEditor(t);
   await replaceSource(page, original.replace('title: Fixture', 'title:'));
-  page.once('dialog', dialog => dialog.dismiss());
-  await page.click('#save');
+  await respondToDialog(page, 'dismiss', () => page.click('#save'));
   await waitForText(page, '#message', 'Save canceled');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'validation');
   assert.equal(await fs.readFile(file, 'utf8'), original);
@@ -571,14 +571,12 @@ test('browser editor validates edits made while an older validation is pending',
   await appendSource(page, '\ndelayed validation');
   await page.waitForFunction(() => window.delayedValidationStarted);
   await replaceSource(page, original.replace('title: Fixture', 'title:').replace('First page.', 'new invalid buffer'));
-  page.once('dialog', dialog => dialog.dismiss());
-  await page.click('#save');
+  await respondToDialog(page, 'dismiss', () => page.click('#save'));
   await waitForText(page, '#message', 'Save canceled');
   await page.evaluate(() => window.releaseDelayedValidation());
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.match(await text(page, '#validation-state'), /Fix syntax \/ metadata/);
-  page.once('dialog', dialog => dialog.dismiss());
-  await page.click('#save');
+  await respondToDialog(page, 'dismiss', () => page.click('#save'));
   await waitForText(page, '#message', 'Save canceled');
   assert.equal(await page.evaluate(() => window.currentBufferValidationCount), 2);
   assert.equal(await fs.readFile(file, 'utf8'), original);
@@ -717,8 +715,7 @@ test('browser editor opens, switches, saves, reverts, reports conflicts, and rec
   assert.match(await fs.readFile(file, 'utf8'), /Saved with Command shortcut\.$/);
 
   await appendSource(page, '\nDiscard this edit.');
-  page.once('dialog', dialog => dialog.accept());
-  await page.click('#revert');
+  await respondToDialog(page, 'accept', () => page.click('#revert'));
   await page.waitForFunction(() => !document.querySelector('#source').value.includes('Discard this edit.'));
   assert.equal(await text(page, '#state'), 'Saved');
 
@@ -727,13 +724,11 @@ test('browser editor opens, switches, saves, reverts, reports conflicts, and rec
   await page.click('#save');
   await waitForText(page, '#message', 'File changed on disk');
   assert.doesNotMatch(await fs.readFile(file, 'utf8'), /Conflicting browser edit/);
-  page.once('dialog', dialog => dialog.accept());
-  await page.click('#revert');
+  await respondToDialog(page, 'accept', () => page.click('#revert'));
   await page.waitForFunction(() => document.querySelector('#source').value.includes('Changed outside the editor.'));
 
   await appendSource(page, '\nRecover this browser draft.');
-  page.once('dialog', dialog => dialog.accept());
-  await page.select('#handout', 'handouts/section/second.md');
+  await respondToDialog(page, 'accept', () => page.select('#handout', 'handouts/section/second.md'));
   await page.waitForFunction(() => document.querySelector('#source').value.includes('code: STH-002'));
   assert.equal(await value(page, '#handout'), 'handouts/section/second.md');
   assert.match(await value(page, '#source'), /title: Second fixture/);
@@ -745,8 +740,7 @@ test('browser editor opens, switches, saves, reverts, reports conflicts, and rec
   assert.match(await value(page, '#source'), /Recover this browser draft\.$/);
   assert.match(await text(page, '#message'), /Browser draft restored/);
 
-  page.once('dialog', dialog => dialog.accept());
-  await page.click('#revert');
+  await respondToDialog(page, 'accept', () => page.click('#revert'));
   await page.waitForFunction(() => !document.querySelector('#source').value.includes('Recover this browser draft.'));
   await page.evaluate(sourceText => localStorage.setItem('handout-editor:draft:handouts/section/example.md', JSON.stringify({ source: `${sourceText}\nDismiss this draft.`, revision: 'old', updatedAt: Date.now() })), await value(page, '#source'));
   await page.select('#handout', 'handouts/section/second.md');
@@ -1195,8 +1189,7 @@ test('preview refresh retains the page and scroll offset and resets for another 
   await replaceSource(page, onePage);
   await page.waitForFunction(() => document.querySelector('#preview-page-count').textContent === 'of 1');
   assert.equal(await value(page, '#preview-page'), '1');
-  page.once('dialog', dialog => dialog.accept());
-  await page.select('#handout', 'handouts/section/second.md');
+  await respondToDialog(page, 'accept', () => page.select('#handout', 'handouts/section/second.md'));
   await page.waitForFunction(() => document.querySelector('#preview').contentDocument?.title === 'Second fixture');
   await page.waitForFunction(() => document.querySelector('#preview-page-count').textContent === 'of 2');
   assert.equal(await value(page, '#preview-page'), '1');
@@ -1731,7 +1724,7 @@ test('a delayed save response does not replace a different open handout', { time
     window.fetch = (url, options) => { if (url === '/api/save') { window.saveStarted = true; const response = actual(url, options); return new Promise(resolve => { release = () => response.then(resolve); }); } return actual(url, options); };
   });
   await replaceSource(page, source + '\nSave this handout.'); await page.click('#save'); await page.waitForFunction(() => window.saveStarted);
-  page.once('dialog', dialog => dialog.accept()); await page.select('#handout', 'handouts/section/second.md');
+  await respondToDialog(page, 'accept', () => page.select('#handout', 'handouts/section/second.md'));
   await page.waitForFunction(() => document.querySelector('#source').value.includes('code: STH-002'));
   const current = await value(page, '#source'); await page.evaluate(() => window.releaseSave());
   await page.waitForFunction(() => !document.querySelector('#save').disabled);
@@ -1796,8 +1789,7 @@ test('find replaces literal body matches, supports metadata opt-in, and undoes r
   assert.equal(await page.$eval('#source', element => element.hidden), false);
   assert.equal(await page.$eval('#source', element => element.value.slice(element.selectionStart, element.selectionEnd)), 'fixture');
   await page.type('#find-replacement', '$&$1');
-  page.once('dialog', dialog => dialog.accept());
-  await page.click('#find-replace-all');
+  await respondToDialog(page, 'accept', () => page.click('#find-replace-all'));
   const replaced = await value(page, '#source');
   assert.equal(replaced, before.replace('Find fixture\nFixture fixture', () => 'Find $&$1\n$&$1 $&$1'));
   assert.equal(await fs.readFile(file, 'utf8'), original);
@@ -2029,9 +2021,9 @@ test('review dashboard filters saved dates and reviewers, preserves the open buf
   await page.click('[data-review-filter="reviewers"]'); assert.equal(await page.$$eval('#review-rows tr', rows => rows.length), 1);
   await page.click('[data-review-filter="all"]'); await page.type('#review-search', 'Alice');
   assert.equal(await page.$$eval('#review-rows tr', rows => rows.length), 1);
-  page.once('dialog', dialog => dialog.dismiss()); await page.click('#review-rows button');
+  await respondToDialog(page, 'dismiss', () => page.click('#review-rows button'));
   assert.equal(await value(page, '#source'), before); assert.equal(await page.$eval('#review-dialog', dialog => dialog.open), true);
-  page.once('dialog', dialog => dialog.accept()); await page.click('#review-rows button');
+  await respondToDialog(page, 'accept', () => page.click('#review-rows button'));
   await page.waitForFunction(() => !document.querySelector('#review-dialog').open);
   assert.match(await value(page, '#source'), /code: STH-002/);
   assert.equal(await value(page, '#review-search'), ''); assert.equal(await page.$$eval('#review-rows tr', rows => rows.length), 0);
@@ -2073,6 +2065,29 @@ test('review dashboard stops after the current check and ignores data arriving a
   await held.continue(); await response;
   assert.equal(await page.$eval('#review-dialog', dialog => dialog.open), false);
   assert.equal(await page.$$eval('#review-rows tr', rows => rows.length), 0);
+});
+
+test('editor disposal waits for browser cleanup before reporting completion', { timeout: 30_000 }, async t => {
+  const { base, server } = await setup(t);
+  const originalLaunch = puppeteer.launch;
+  let release, closeStarted;
+  const gate = new Promise(resolve => { release = resolve; });
+  const closing = new Promise(resolve => { closeStarted = resolve; });
+  puppeteer.launch = async () => ({
+    newPage: async () => { throw Error('Controlled validation failure'); },
+    close: async () => { closeStarted(); await gate; }
+  });
+  try {
+    const response = await fetch(`${base}/api/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: 'handouts/section/example.md' }) });
+    assert.equal(response.status, 422);
+    let finished = false;
+    const disposed = server.dispose().then(() => { finished = true; });
+    await closing;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(finished, false);
+    release(); await disposed;
+    assert.equal(finished, true);
+  } finally { release(); puppeteer.launch = originalLaunch; await server.dispose(); }
 });
 
 test('review checks close a validation browser that finishes launching after server shutdown', { timeout: 30_000 }, async t => {

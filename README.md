@@ -12,6 +12,9 @@ binder. Organization content and private records belong in separate repositories
 This repository includes only application code, design/test fixtures, and a
 fictional starter handbook.
 
+See the [Windows quickstart](docs/WINDOWS-QUICKSTART.md) for installation, first PDF,
+restart, and troubleshooting instructions.
+
 ## Try it
 
 Requires Node.js 22.12 or newer and npm. Installation downloads the Chrome for
@@ -31,6 +34,12 @@ initial sections. Browse for a parent folder or enter a path directly. The
 wizard refuses existing folders and locations inside the application checkout.
 It creates your configuration and first draft, then opens the editor with a
 short edit → save → PDF proof guide. GitHub setup is optional.
+
+Use **Check this computer’s setup** on the welcome screen to check Node, the
+PDF browser executable, and the suggested binder location. It offers recovery
+commands to copy and lists Git/GitHub CLI as optional. It never installs tools
+or signs in automatically. After installing a missing dependency, restart
+BinderPress and check again.
 
 The editor shows the current binder's name and folder. **Change binder** returns
 to the welcome screen; unsaved edits use the existing leave-page confirmation.

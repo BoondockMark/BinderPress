@@ -94,7 +94,7 @@ export function createProofJobs({ root, temporaryRoot, privateRoot, template }) 
     } finally {
       clearTimeout(deadline);
       await job.browser?.close().catch(() => {}); job.browser = undefined;
-      if (workspace) await fs.rm(workspace, { recursive: true, force: true });
+      if (workspace) await fs.rm(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       if (completedPdf && !job.cancelled) { job.pdf = completedPdf; job.pdfSha256 = hash(completedPdf); job.state = 'ready'; }
       job.finished = true;
       if (!closed && jobs.has(job.id)) {

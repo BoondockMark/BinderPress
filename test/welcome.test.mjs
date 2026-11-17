@@ -33,7 +33,7 @@ test('new binders contain independent configuration and a valid first draft; exi
   assert.equal(result.data.url, '/editor');
   assert.deepEqual((await fs.readdir(directory)).sort(), ['.gitignore', 'README.md', 'binderpress.config.json', 'handouts']);
   const context = await (await fetch(base + '/api/workspace')).json();
-  assert.equal(context.title, 'Club Handbook'); assert.equal(context.root, directory);
+  assert.equal(context.title, 'Club Handbook'); assert.equal(context.root, await fs.realpath(directory));
   assert.equal(context.firstRun, true); assert.equal(context.sample, false); assert.equal(context.launcher, true);
   const documents = await (await fetch(base + '/api/handouts')).json();
   assert.equal(documents[0].code, 'MEM-001'); assert.equal(documents[0].status, 'draft');
@@ -68,7 +68,7 @@ test('opening a different binder reloads sections in a separate process and fail
   const invalid = await post('open', { directory: temporary });
   assert.equal(invalid.status, 422); assert.match(invalid.data.error, /no binderpress.config.json/);
   context = await (await fetch(base + '/api/workspace')).json();
-  assert.equal(context.root, directory);
+  assert.equal(context.root, await fs.realpath(directory));
 });
 
 test('private mode requires the linked checkout and the public selection ignores a broken local link', async t => {
@@ -79,6 +79,21 @@ test('private mode requires the linked checkout and the public selection ignores
   assert.equal((await post('open', { directory, privateMode: true })).status, 422);
   assert.equal((await post('open', { directory, privateMode: false })).status, 200);
   assert.equal((await (await fetch(base + '/api/workspace')).json()).private, false);
+});
+
+test('opening a folder alias keeps the same canonical binder and draft identity', async t => {
+  const { temporary, post, base } = await setup(t);
+  const directory = path.join(temporary, 'Actual binder'), alias = path.join(temporary, 'Folder alias');
+  await createBinder(definition(directory), { appRoot: APP_ROOT });
+  try { await fs.symlink(directory, alias, process.platform === 'win32' ? 'junction' : 'dir'); }
+  catch (error) { if (process.platform === 'win32' && error.code === 'EPERM') { t.skip('Folder links are unavailable on this Windows runner'); return; } throw error; }
+  const opened = await post('open', { directory: alias });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.root, await fs.realpath(directory));
+  const identity = html => html.match(/name="binderpress-drafts" content="([^"]+)"/)[1];
+  const before = identity(await (await fetch(base + '/editor')).text());
+  assert.equal((await post('open', { directory })).status, 200);
+  assert.equal(identity(await (await fetch(base + '/editor')).text()), before);
 });
 
 test('welcome routes reject foreign origins, host rebinding, missing tokens, and oversized requests', async t => {
@@ -141,8 +156,59 @@ test('folder browsing uses server paths and does not offer hidden or non-directo
   await fs.mkdir(path.join(temporary, '.hidden'));
   await fs.writeFile(path.join(temporary, 'file.md'), 'file');
   const result = await post('browse', { path: temporary });
-  assert.equal(result.status, 200); assert.equal(result.data.path, temporary);
+  assert.equal(result.status, 200); assert.equal(result.data.path, await fs.realpath(temporary));
   assert.deepEqual(result.data.folders.map(folder => folder.name), ['Visible folder']);
+});
+
+test('setup checks and the Windows guide are available without opening a binder', async t => {
+  const { post, base } = await setup(t);
+  const response = await post('diagnostics');
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.data.checks.map(check => check.id), ['node', 'browser', 'folder']);
+  assert.deepEqual(response.data.optional.map(check => check.id), ['git', 'github']);
+  assert.equal((await (await fetch(base + '/api/welcome')).json()).active, null);
+  const guide = await fetch(base + '/windows-quickstart');
+  assert.equal(guide.status, 200);
+  assert.match(await guide.text(), /BinderPress on Windows/);
+  assert.equal((await fetch(base + '/setup-controls.js')).status, 200);
+});
+
+test('setup dialog shows checks, optional GitHub instructions, and remains usable on mobile', async t => {
+  const { base } = await setup(t);
+  const browser = await puppeteer.launch(browserOptions()); t.after(() => browser.close());
+  const page = await browser.newPage(); await page.setViewport({ width: 390, height: 844 });
+  await page.goto(base, { waitUntil: 'networkidle0' });
+  await page.waitForFunction(() => !document.querySelector('#setup-check').disabled);
+  await page.click('#setup-check');
+  await page.waitForFunction(() => document.querySelectorAll('#setup-results .setup-result').length === 3);
+  assert.equal(await page.$eval('#setup-dialog', dialog => dialog.open), true);
+  assert.match(await page.$eval('#setup-summary', element => element.textContent), /checks passed|need attention/);
+  await page.click('#github-setup summary');
+  assert.match(await page.$eval('#github-setup', element => element.textContent), /gh auth login/);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.click('#setup-retry');
+  await page.waitForFunction(() => !document.querySelector('#setup-retry').disabled);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('#setup-dialog', dialog => dialog.open), false);
+});
+
+test('setup recovery commands are displayed and copied without executing them', async t => {
+  const { base } = await setup(t);
+  const browser = await puppeteer.launch(browserOptions()); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.evaluateOnNewDocument(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => { window.copiedCommand = text; } } }));
+  await page.setRequestInterception(true);
+  page.on('request', request => {
+    if (request.url().endsWith('/api/welcome/diagnostics')) return request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ready: false, checks: [{ id: 'browser', label: 'PDF browser', state: 'attention', detail: 'Download the missing browser.', command: 'npx puppeteer browsers install chrome' }], optional: [] }) });
+    return request.continue();
+  });
+  await page.goto(base, { waitUntil: 'networkidle0' });
+  await page.click('#setup-check');
+  await page.waitForSelector('.setup-command button');
+  assert.match(await page.$eval('#setup-summary', element => element.textContent), /need attention/);
+  await page.click('.setup-command button');
+  await page.waitForFunction(() => window.copiedCommand === 'npx puppeteer browsers install chrome');
+  assert.equal(await page.$eval('.setup-command button', element => element.textContent), 'Copied');
 });
 
 test('welcome browser flow creates a binder, shows its identity, and saves an independent first page', async t => {

@@ -1,3 +1,5 @@
+import { setupControls } from './setup-controls.js';
+
 const $ = selector => document.querySelector(selector);
 let token, baseDirectory, busy = false, customFolder = false, browseTarget, folderLocation;
 const slug = value => value.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'my-handbook';
@@ -12,6 +14,8 @@ async function api(action, value) {
   if (!response.ok) throw Error(result.error || 'Something went wrong. Please try again.');
   return result;
 }
+setupControls({ api });
+
 function view(name) {
   document.querySelectorAll('.view').forEach(element => { element.hidden = element.id !== name + '-view'; });
   status('');
