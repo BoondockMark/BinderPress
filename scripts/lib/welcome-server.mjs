@@ -5,17 +5,18 @@ import { fork } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { browseFolders, createBinder, inspectBinder, projectError } from './binder-project.mjs';
+import { inspectSetup } from './setup-checks.mjs';
 
 const applicationRoot = fileURLToPath(new URL('../../', import.meta.url));
 const send = (response, status, value) => {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(value));
 };
-const publicFiles = { '/welcome': ['welcome/index.html', 'text/html; charset=utf-8'], '/': ['welcome/index.html', 'text/html; charset=utf-8'], '/welcome.js': ['welcome/welcome.js', 'text/javascript; charset=utf-8'], '/welcome.css': ['welcome/welcome.css', 'text/css; charset=utf-8'] };
+const publicFiles = { '/setup-controls.js': ['welcome/setup-controls.js', 'text/javascript; charset=utf-8'], '/windows-quickstart': ['docs/WINDOWS-QUICKSTART.md', 'text/plain; charset=utf-8'], '/welcome': ['welcome/index.html', 'text/html; charset=utf-8'], '/': ['welcome/index.html', 'text/html; charset=utf-8'], '/welcome.js': ['welcome/welcome.js', 'text/javascript; charset=utf-8'], '/welcome.css': ['welcome/welcome.css', 'text/css; charset=utf-8'] };
 
 export function createWelcomeServer({ appRoot = applicationRoot, baseDirectory = path.resolve(process.cwd()) === path.resolve(appRoot) ? path.dirname(appRoot) : process.cwd(), startupTimeout = 20000 } = {}) {
   const token = randomBytes(24).toString('hex');
-  let active, pending = false, closing = false;
+  let active, pending = false, closing = false, setupCheck;
   const children = new Set();
   async function stop(child) {
     if (!child || child.exitCode !== null) return;
@@ -84,6 +85,10 @@ export function createWelcomeServer({ appRoot = applicationRoot, baseDirectory =
         if (request.method !== 'POST' || request.headers['x-binderpress-token'] !== token) return send(response, 403, { error: 'Refresh the welcome page and try again.' });
         if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') return send(response, 415, { error: 'Send this request as JSON.' });
         const value = await body(request);
+        if (url.pathname === '/api/welcome/diagnostics') {
+          setupCheck ??= inspectSetup({ directory: baseDirectory }).finally(() => { setupCheck = undefined; });
+          return send(response, 200, await setupCheck);
+        }
         if (url.pathname === '/api/welcome/browse') return send(response, 200, await browseFolders(typeof value.path === 'string' && value.path.trim() ? path.resolve(baseDirectory, value.path) : baseDirectory));
         if (!['/api/welcome/create', '/api/welcome/open', '/api/welcome/sample'].includes(url.pathname)) return send(response, 404, { error: 'Not found' });
         if (pending) return send(response, 409, { error: 'A binder is already opening. Please wait.' });

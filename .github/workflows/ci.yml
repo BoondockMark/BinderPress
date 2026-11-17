@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   test:
+    timeout-minutes: 15
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -21,6 +22,7 @@ jobs:
         env:
           PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
       - run: npm test
+        timeout-minutes: 10
         env:
           PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
       - run: npm run build:public

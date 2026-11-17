@@ -145,6 +145,57 @@ test('folder browsing uses server paths and does not offer hidden or non-directo
   assert.deepEqual(result.data.folders.map(folder => folder.name), ['Visible folder']);
 });
 
+test('setup checks and the Windows guide are available without opening a binder', async t => {
+  const { post, base } = await setup(t);
+  const response = await post('diagnostics');
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.data.checks.map(check => check.id), ['node', 'browser', 'folder']);
+  assert.deepEqual(response.data.optional.map(check => check.id), ['git', 'github']);
+  assert.equal((await (await fetch(base + '/api/welcome')).json()).active, null);
+  const guide = await fetch(base + '/windows-quickstart');
+  assert.equal(guide.status, 200);
+  assert.match(await guide.text(), /BinderPress on Windows/);
+  assert.equal((await fetch(base + '/setup-controls.js')).status, 200);
+});
+
+test('setup dialog shows checks, optional GitHub instructions, and remains usable on mobile', async t => {
+  const { base } = await setup(t);
+  const browser = await puppeteer.launch(browserOptions()); t.after(() => browser.close());
+  const page = await browser.newPage(); await page.setViewport({ width: 390, height: 844 });
+  await page.goto(base, { waitUntil: 'networkidle0' });
+  await page.waitForFunction(() => !document.querySelector('#setup-check').disabled);
+  await page.click('#setup-check');
+  await page.waitForFunction(() => document.querySelectorAll('#setup-results .setup-result').length === 3);
+  assert.equal(await page.$eval('#setup-dialog', dialog => dialog.open), true);
+  assert.match(await page.$eval('#setup-summary', element => element.textContent), /checks passed|need attention/);
+  await page.click('#github-setup summary');
+  assert.match(await page.$eval('#github-setup', element => element.textContent), /gh auth login/);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.click('#setup-retry');
+  await page.waitForFunction(() => !document.querySelector('#setup-retry').disabled);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval('#setup-dialog', dialog => dialog.open), false);
+});
+
+test('setup recovery commands are displayed and copied without executing them', async t => {
+  const { base } = await setup(t);
+  const browser = await puppeteer.launch(browserOptions()); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.evaluateOnNewDocument(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => { window.copiedCommand = text; } } }));
+  await page.setRequestInterception(true);
+  page.on('request', request => {
+    if (request.url().endsWith('/api/welcome/diagnostics')) return request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ready: false, checks: [{ id: 'browser', label: 'PDF browser', state: 'attention', detail: 'Download the missing browser.', command: 'npx puppeteer browsers install chrome' }], optional: [] }) });
+    return request.continue();
+  });
+  await page.goto(base, { waitUntil: 'networkidle0' });
+  await page.click('#setup-check');
+  await page.waitForSelector('.setup-command button');
+  assert.match(await page.$eval('#setup-summary', element => element.textContent), /need attention/);
+  await page.click('.setup-command button');
+  await page.waitForFunction(() => window.copiedCommand === 'npx puppeteer browsers install chrome');
+  assert.equal(await page.$eval('.setup-command button', element => element.textContent), 'Copied');
+});
+
 test('welcome browser flow creates a binder, shows its identity, and saves an independent first page', async t => {
   const { temporary, base } = await setup(t);
   const browser = await puppeteer.launch(browserOptions()); t.after(() => browser.close());
