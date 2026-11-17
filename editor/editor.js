@@ -1,3 +1,5 @@
+import { showWorkspace } from './workspace-controls.js';
+import { workspaceHeaders } from './workspace-session.js';
 import { createGitControls } from './git-controls.js';
 import { createReviewControls } from './review-controls.js';
 import { createLinkControls } from './link-controls.js';
@@ -10,6 +12,7 @@ import { createPreviewControls } from './preview-controls.js';
 import { EditHistory, editorSource, updateMetadataFields, figureAtOffset, figureRanges, handoutNeedsFixing, handoutOptionLabel, indentSelection, prefixLines, readHandoutStatus, selectionDetails, setHandoutStatus } from './editor-model.js';
 
 const select = document.querySelector('#handout');
+void showWorkspace();
 const handoutSearch = document.querySelector('#handout-search');
 const handoutResults = document.querySelector('#handout-results');
 const needsFixing = document.querySelector('#needs-fixing');
@@ -307,7 +310,8 @@ async function scanHandouts() {
     : `Scan complete · ${errors} with errors`;
 }
 
-const draftKey = path => `handout-editor:draft:${path}`;
+const draftNamespace = document.querySelector('meta[name=binderpress-drafts]')?.content;
+const draftKey = path => `handout-editor:draft:${draftNamespace ? draftNamespace + ':' : ''}${path}`;
 function readDraft(path) {
   if (opened.private) return null;
   try {
@@ -342,7 +346,7 @@ function updateStatusControl() {
 }
 
 async function request(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetch(url, { ...options, headers: workspaceHeaders(options?.headers) });
   const type = response.headers.get('content-type') || '';
   const value = type.includes('application/json') ? await response.json() : await response.text();
   if (!response.ok) throw Object.assign(Error(value.error || value), { status: response.status });

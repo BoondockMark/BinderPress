@@ -1,3 +1,4 @@
+import { workspaceHeaders } from './workspace-session.js';
 export function createProofControls({ request, context, selectIssue }) {
   const dialog = document.querySelector('#proof-dialog');
   const state = document.querySelector('#proof-state');
@@ -85,7 +86,7 @@ export function createProofControls({ request, context, selectIssue }) {
     downloadError = undefined;
     download.disabled = true;
     try {
-      const response = await fetch('/api/proofs/download', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: job.id, session: snapshot.session }), cache: 'no-store' });
+      const response = await fetch('/api/proofs/download', { method: 'POST', headers: workspaceHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ id: job.id, session: snapshot.session }), cache: 'no-store' });
       if (!response.ok) throw Error((await response.json()).error || 'PDF download failed');
       const blob = await response.blob();
       if (sequence !== generation || !current()) return draw();
