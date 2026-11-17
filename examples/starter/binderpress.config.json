@@ -1,0 +1,17 @@
+{
+  "title": "Example Handbook",
+  "organization": "Example Organization",
+  "outputName": "EXAMPLE_HANDBOOK",
+  "sections": [
+    {
+      "title": "Getting Started",
+      "code": "GET",
+      "folder": "getting-started"
+    },
+    {
+      "title": "Reference",
+      "code": "REF",
+      "folder": "reference"
+    }
+  ]
+}

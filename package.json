@@ -1,0 +1,52 @@
+{
+  "name": "binderpress",
+  "private": false,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "setup:private": "node scripts/setup.mjs",
+    "build": "node scripts/build.mjs",
+    "build:public": "node scripts/build.mjs --public",
+    "build:private": "node scripts/build.mjs --private",
+    "check": "node scripts/build.mjs --check",
+    "lint:layout": "node scripts/lint-layout.mjs",
+    "test:visual:update": "node scripts/build.mjs --update-visuals",
+    "preview": "node scripts/preview.mjs",
+    "editor": "node scripts/editor.mjs",
+    "editor:private": "node scripts/editor.mjs --private",
+    "editor:public": "node scripts/editor.mjs --public",
+    "test": "node --import ./test/configure.mjs --test test/*.test.mjs",
+    "start": "node bin/binderpress.mjs editor"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "puppeteer": "25.12.0"
+  },
+  "allowScripts": {
+    "puppeteer@25.12.0": true
+  },
+  "description": "A local editor and publishing toolkit for reviewed, print-ready handbooks and binders.",
+  "license": "GPL-3.0-only",
+  "bin": {
+    "binderpress": "bin/binderpress.mjs"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "editor/",
+    "templates/",
+    "assets/styles/",
+    "assets/fonts/",
+    "test/fixtures/components.html",
+    "test/fixtures/baseline.css",
+    "README.md",
+    "LICENSE",
+    "docs/",
+    "assets/handouts/FIX-00/",
+    "examples/starter/binderpress.config.json",
+    "examples/starter/README.md",
+    "examples/starter/handouts/"
+  ]
+}

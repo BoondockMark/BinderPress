@@ -1,0 +1,49 @@
+{
+  "title": "Test Binder",
+  "organization": "Test Organization",
+  "outputName": "TEST_BINDER",
+  "indexClass": "binderpress-binder",
+  "privateSibling": "test-library-private",
+  "sections": [
+    {
+      "title": "Start Here",
+      "code": "STH",
+      "folder": "start-here"
+    },
+    {
+      "title": "Alerts & Communication",
+      "code": "COM",
+      "folder": "alerts-communication"
+    },
+    {
+      "title": "Evacuation & Shelter",
+      "code": "EVS",
+      "folder": "evacuation-shelter"
+    },
+    {
+      "title": "Water, Food & Cooking",
+      "code": "WFC",
+      "folder": "water-food-cooking"
+    },
+    {
+      "title": "Home & Utilities",
+      "code": "HUT",
+      "folder": "home-utilities"
+    },
+    {
+      "title": "Hands-On Skills",
+      "code": "SKL",
+      "folder": "hands-on-skills"
+    },
+    {
+      "title": "Hazard Guides",
+      "code": "HZD",
+      "folder": "hazard-guides"
+    },
+    {
+      "title": "Plans & Records",
+      "code": "PRP",
+      "folder": "plans-records"
+    }
+  ]
+}

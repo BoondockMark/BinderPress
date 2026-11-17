@@ -1,0 +1,217 @@
+# Graphics and assets
+
+This guide explains how to add photographs, illustrations, maps, and diagrams
+to printable handouts. Assets are local and validated so the same inputs produce
+the browser proof and PDF without relying on a network service.
+
+## Directory structure
+
+Give each handout an asset directory whose name exactly matches its metadata
+`code`:
+
+```text
+assets/handouts/
+├── COM-001/
+│   ├── manifest.json
+│   ├── smoke-column.jpg.base64
+│   └── smoke-column-source.svg.base64
+└── EVA-002/
+    ├── manifest.json
+    └── evacuation-route.svg.base64
+```
+
+Use descriptive, lower-case file names. Keep editable originals alongside the
+published graphics when useful, but do not reference those originals from a
+handout or list them in the manifest unless they are also publication assets.
+Do not place source graphics in `docs/pdfs/` or `docs/previews/`; those
+directories contain generated output.
+
+Published graphics may be SVG, PNG, or JPEG. Use SVG for diagrams. GIF, WebP,
+BMP, PDF, and office-document images are not supported.
+
+### GitHub-compatible storage
+
+The repository stores newly uploaded graphics as Base64 text so GitHub and
+text-only contribution tools never have to accept a binary file or render an
+SVG attachment. Keep the graphic's normal published name (for example,
+`smoke-column.jpg`) in `manifest.json` and handout markup; its repository file
+is that name plus `.base64` (`smoke-column.jpg.base64`). The build validates and
+decodes the text into the ignored `build/` directory before rendering.
+
+You do not need to encode files by hand. Run `npm run editor`, choose **Insert image**,
+and upload the original PNG, JPEG, or SVG. The editor sanitizes SVG, verifies
+PNG/JPEG signatures, and writes the GitHub-safe `.base64` text file. Existing
+unencoded assets remain supported, but new editor uploads always use the text
+format. Do not put a Data URL prefix in a `.base64` file or change the logical
+filename in the manifest.
+
+## Asset manifest
+
+Every asset directory needs a `manifest.json`. Add one entry for each published
+graphic:
+
+```json
+{
+  "assets": [
+    {
+      "file": "smoke-column.jpg",
+      "type": "photograph",
+      "creator": "Alex Example",
+      "source": "Fire Watch field photograph, 2026-08-12",
+      "license": "Used with written permission",
+      "alt": "A narrow smoke column rising behind a dry hillside.",
+      "caption": "Smoke may be visible before flames.",
+      "decorative": false
+    }
+  ]
+}
+```
+
+The required fields are `file`, `type`, `creator`, `source`, `license`, and
+`decorative`. `type` must be `photograph`, `illustration`, or `diagram`.
+Meaningful graphics also require useful `alt` text. `caption` is recommended
+when the graphic needs a visible explanation, but is not required by the
+manifest validator.
+
+Record the actual creator, origin, and redistribution terms. Do not assume that
+an image found online can be republished. Keep permission records outside the
+generated output as required by the project owner.
+
+### Alternative text
+
+Alternative text communicates the graphic's purpose rather than merely saying
+“image of.” Copy it exactly into both the manifest and the HTML `alt` attribute:
+
+```json
+{
+  "alt": "A narrow smoke column rising behind a dry hillside.",
+  "decorative": false
+}
+```
+
+A purely decorative image instead uses both `"decorative": true` and
+`"alt": ""`. It must still have an explicit `alt=""` in the handout. Never
+omit the `alt` attribute.
+
+## Add a graphic to a handout
+
+The local visual editor (`npm run editor`) provides an **Insert image** panel for this
+workflow. It writes the text-encoded upload and manifest entry together, then inserts
+the same documented figure markup shown below. Its crop and alignment controls
+change only the figure classes and `--crop-position`; they never resample or
+overwrite the original image. All creator, source, license, and alternative-text
+fields remain required. Deleting from the page keeps the asset available, while
+permanent asset deletion is blocked until all saved references are removed.
+
+Click a paragraph or section in Visual mode, then **Insert image** to choose an
+existing asset or upload/drop a new one. Choose whether to insert before or after
+that section. Click an existing image to resize it with the live size slider or
+full/half-width presets. Its current alignment and crop settings load automatically.
+Choose a different asset or **Upload and replace** to replace just that image while
+retaining placement. Apply changes, then Save. Removing from the page keeps the
+asset in the library; permanent deletion is under **Manage assets**.
+
+Handouts are Markdown files, but documented HTML components may be used for
+print layout. Reference an asset with the exact repository-relative path
+`../assets/handouts/<CODE>/<file>`:
+
+```html
+<figure class="figure figure--full figure--crop-3x2"
+        style="--crop-position: 50% 35%"
+        aria-labelledby="smoke-column-caption">
+  <img src="../assets/handouts/COM-001/smoke-column.jpg"
+       alt="A narrow smoke column rising behind a dry hillside.">
+  <figcaption id="smoke-column-caption">
+    Smoke may be visible before flames.
+    <span class="credit">Photo: Alex Example, used with permission.</span>
+  </figcaption>
+</figure>
+```
+
+Do not use absolute paths, `file:` URLs, remote HTTP(S) URLs, data URLs, or
+`srcset`. A handout may reference assets only from its own code directory. The
+build verifies that the file is manifested and that its HTML and manifest
+alternative text match exactly.
+
+A caption explains why the graphic matters. A credit gives visible attribution.
+Neither replaces the manifest's source and license record. Give each caption a
+unique `id` and connect its figure with `aria-labelledby` as shown above.
+
+## Sizing and cropping
+
+Use one width class on every figure:
+
+- `figure--full` uses the printable width.
+- `figure--half figure--left` wraps text on the right.
+- `figure--half figure--right` wraps text on the left.
+
+The editor’s custom-size slider uses `figure--full` with an inline percentage
+width (for example, `style="width: 35%"`). Smaller custom sizes may use
+`figure--left` or `figure--right`; the original image proportions are retained
+unless a crop is selected. The editor adds the same clearing element used by
+half-width figures.
+
+After a floated half-width figure and its related text, add:
+
+```html
+<div class="figure-clear"></div>
+```
+
+With no crop class, the image keeps its intrinsic proportions. The controlled
+crop classes are `figure--crop-3x2`, `figure--crop-4x3`, and
+`figure--crop-square`. They use `object-fit: cover`; set `--crop-position` only
+after confirming the crop retains important content. Use `figure--contain` when
+the complete image must remain visible.
+
+Raster graphics must provide at least **200 effective pixels per inch (PPI)** at
+their rendered size. A 7-inch-wide image therefore needs to be at least 1,400
+pixels wide, and a 3.5-inch-wide image needs to be at least 700 pixels wide.
+Avoid upscaling and retain the original when its license permits.
+
+## Diagrams and maps
+
+Use SVG and add `figure--diagram figure--contain` for diagrams and maps:
+
+```html
+<figure class="figure figure--full figure--diagram figure--contain"
+        aria-labelledby="route-caption">
+  <img src="../assets/handouts/EVA-002/evacuation-route.svg"
+       alt="A solid line leads from Home to the Meeting Place and a dashed line leads to the alternate location.">
+  <figcaption id="route-caption">
+    <strong>Figure 1.</strong> Primary and alternate evacuation routes.
+    <span class="credit">Diagram: project maintainers; see asset manifest.</span>
+  </figcaption>
+</figure>
+```
+
+Diagrams must remain understandable in grayscale. Combine labels, shapes,
+patterns, and solid or dashed lines instead of using color alone. Include an SVG
+`<title>` and `<desc>`, and convert unsupported fonts to paths when necessary.
+The build rejects SVG scripts, event handlers, embedded HTML, and external
+resources.
+
+## Build and review checklist
+
+Run:
+
+```bash
+npm run build
+npm test
+npm run check
+```
+
+Then inspect every affected `docs/previews/<CODE>-page-<N>.png` and
+`docs/pdfs/<CODE>.pdf`:
+
+- View each page at normal size and zoom in to check raster quality.
+- Inspect color and grayscale output.
+- Check crops, captions, credits, labels, and reading order.
+- Confirm that no content clips, overflows, or enters the binding margin.
+- Confirm diagrams remain understandable without color.
+- For multi-page handouts, complete the physical duplex test on every sheet in
+  [PRINTING.md](publishing/PRINTING.md).
+
+Commit the source graphic, manifest, handout source, and regenerated tracked
+artifacts together. Follow the review requirements in
+[CONTRIBUTING.md](CONTRIBUTING.md); a graphic change can require a new physical
+proof under the [printing policy](publishing/PRINTING.md).

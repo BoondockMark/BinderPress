@@ -1,0 +1,32 @@
+name: Test BinderPress
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:public
+      - run: npm pack --dry-run
+      - name: Upload proofs and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: binderpress-proofs
+          path: |
+            examples/starter/docs/pdfs/
+            examples/starter/docs/previews/
+            examples/starter/build/diagnostics/
+          if-no-files-found: warn

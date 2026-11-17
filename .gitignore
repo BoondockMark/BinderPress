@@ -1,0 +1,10 @@
+node_modules/
+build/
+.DS_Store
+.binder-local.json
+examples/*/build/
+examples/*/docs/pdfs/
+examples/*/docs/previews/
+examples/*/docs/moodle-index.html
+examples/*/BINDER_INDEX.md
+*.tgz
