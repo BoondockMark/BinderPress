@@ -22,10 +22,10 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "puppeteer": "25.12.0"
+    "puppeteer": "25.17.0"
   },
   "allowScripts": {
-    "puppeteer@25.12.0": true
+    "puppeteer@25.17.0": true
   },
   "description": "A local editor and publishing toolkit for reviewed, print-ready handbooks and binders.",
   "license": "GPL-3.0-only",

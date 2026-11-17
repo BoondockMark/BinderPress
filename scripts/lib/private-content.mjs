@@ -22,7 +22,13 @@ export async function loadBuildContent(root, { publicOnly = false, requirePrivat
   let privateRoot;
   if (!publicOnly && (requirePrivate || privateDirectory)) {
     if (!privateDirectory) throw Error('Private mode requires BINDER_PRIVATE_DIR or a local link; run npm run setup:private after cloning the sibling private repository');
-    privateRoot = await fs.realpath(path.resolve(root, privateDirectory));
+    const requestedDirectory = path.resolve(root, privateDirectory);
+    try {
+      privateRoot = await fs.realpath(requestedDirectory);
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+      throw Object.assign(Error(`${error.code}: Private library not found: ${requestedDirectory}. Relative private paths are resolved from the content directory: ${root}. Check BINDER_PRIVATE_DIR or .binder-local.json, or use --public for public content.`, { cause: error }), { code: error.code });
+    }
     const publicRoot = await fs.realpath(root);
     if (privateRoot === publicRoot || privateRoot.startsWith(publicRoot + path.sep)) {
       throw Error('Private checkout must be outside the public checkout');

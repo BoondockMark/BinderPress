@@ -8,6 +8,15 @@ export const CONTENT_ROOT = path.resolve(process.env.BINDERPRESS_CONTENT_DIR || 
     ? path.join(APP_ROOT, 'examples/starter') : process.cwd()
 ));
 
+export function contentMode(root = CONTENT_ROOT, args = process.argv.slice(2)) {
+  const requirePrivate = args.includes('--private');
+  const starter = path.resolve(root) === path.resolve(APP_ROOT, 'examples/starter');
+  return {
+    publicOnly: args.includes('--public') || (starter && !requirePrivate),
+    requirePrivate
+  };
+}
+
 export function validateConfig(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('configuration must be an object');
   const config = { organization: '', outputName: 'BINDER', indexClass: 'binderpress-binder', privateSibling: null, ...input };
