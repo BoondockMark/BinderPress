@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to BinderPress</title><link rel="stylesheet" href="/welcome.css"></head>
+<body>
+  <header class="site-header"><a class="brand" href="/welcome"><span class="book-mark" aria-hidden="true"></span>BinderPress</a><span class="local-label">Your local publishing workspace</span></header>
+  <main>
+    <section id="home-view" class="view" aria-labelledby="welcome-title">
+      <p class="eyebrow">WORDS INTO SOMETHING USEFUL</p>
+      <h1 id="welcome-title">A place for your next handbook.</h1>
+      <p class="intro">Write, review, and turn practical knowledge into clear, printable pages. Start with a sample or bring your own content.</p>
+      <a id="resume" class="resume" href="/editor" hidden></a>
+      <div class="choices">
+        <button id="try-sample" class="choice"><span class="choice-number">01 / EXPLORE</span><strong>Try the sample</strong><span>Get a feel for the editor with a fictional, one-page handbook.</span><span class="choice-action">Open sample <span aria-hidden="true">↗︎</span></span></button>
+        <button id="new-binder" class="choice featured"><span class="choice-number">02 / MAKE IT YOURS</span><strong>Create a binder</strong><span>Choose a name and a few sections. We’ll prepare your first draft.</span><span class="choice-action">Start a new binder <span aria-hidden="true">↗︎</span></span></button>
+        <button id="open-binder" class="choice"><span class="choice-number">03 / CONTINUE</span><strong>Open an existing binder</strong><span>Pick up where you left off with a binder folder on this computer.</span><span class="choice-action">Choose a folder <span aria-hidden="true">↗︎</span></span></button>
+      </div>
+      <p class="quiet-note">Everything is saved on this computer. GitHub is optional for local editing.</p>
+    </section>
+
+    <section id="create-view" class="view form-view" aria-labelledby="create-title" hidden>
+      <button class="back" type="button" data-home>← Back</button><p class="eyebrow">A FRESH START</p>
+      <h1 id="create-title">Make this binder yours.</h1><p class="intro">A few details, then you’re ready to write. You can add pages and refine your sections as you go.</p>
+      <form id="create-form">
+        <div class="form-grid"><label>Binder name<input id="binder-title" name="title" required maxlength="72" placeholder="e.g. Volunteer Handbook" autocomplete="off"></label><label>Organization <span class="optional">optional</span><input id="binder-organization" name="organization" maxlength="100" placeholder="e.g. Oak Street Community" autocomplete="organization"></label></div>
+        <label for="create-directory">Save in a new folder</label><div class="folder-field"><input id="create-directory" required autocomplete="off" spellcheck="false"><button id="browse-create" type="button" class="secondary">Browse…</button></div>
+        <p class="field-help">Choose a new folder outside the BinderPress application. Existing folders are never overwritten.</p>
+        <fieldset><legend>Initial sections</legend><p class="field-help">Sections organize your pages. Each has a short, unique three-letter code for printed tabs. Up to eight sections.</p><div id="sections"></div><button id="add-section" type="button" class="text-button">+ Add a section</button></fieldset>
+        <div class="what-next"><strong>Your first draft will be ready to edit.</strong><p>We’ll create a configuration, a draft page, and a short README. GitHub and private-library setup can wait until you need them.</p></div>
+        <button id="create-submit" class="primary" type="submit">Create and open binder <span aria-hidden="true">→</span></button>
+      </form>
+    </section>
+
+    <section id="open-view" class="view form-view" aria-labelledby="open-title" hidden>
+      <button class="back" type="button" data-home>← Back</button><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p>
+      <h1 id="open-title">Open your binder.</h1><p class="intro">Choose the content folder containing your binder’s configuration and handouts.</p>
+      <form id="open-form"><label for="open-directory">Binder folder</label><div class="folder-field"><input id="open-directory" required autocomplete="off" spellcheck="false"><button id="browse-open" type="button" class="secondary">Browse…</button></div><p class="field-help">Select the binder folder itself, rather than its handouts subfolder.</p>
+        <label class="check-label"><input id="include-private" type="checkbox">Include linked private pages</label><p class="field-help">Leave this off to open public pages and placeholders. Private mode requires a configured private checkout.</p>
+        <button id="open-submit" class="primary" type="submit">Open binder <span aria-hidden="true">→</span></button>
+      </form>
+    </section>
+    <div id="status" role="status" tabindex="-1" hidden></div>
+  </main>
+  <footer>Made for pages worth keeping.<span>Keep the terminal open while you work. Press Ctrl+C there to stop.</span></footer>
+  <dialog id="folder-dialog" aria-labelledby="folder-title"><div class="dialog-top"><h2 id="folder-title">Choose a folder</h2><button id="folder-cancel" type="button" aria-label="Close folder chooser">×</button></div><p id="folder-help"></p><form id="folder-path-form"><label for="folder-path">Location</label><div class="folder-field"><input id="folder-path" autocomplete="off" spellcheck="false" required><button class="secondary">Go</button></div></form><button id="folder-up" type="button" class="text-button">↑ Parent folder</button><div id="folder-list" class="folder-list"></div><p id="folder-error" role="status"></p><button id="folder-select" type="button" class="primary">Use this folder</button></dialog>
+  <template id="section-template"><div class="section-row"><label>Section name<input data-field="title" required maxlength="22" placeholder="Section name" autocomplete="off"></label><label>Code<input data-field="code" required pattern="[A-Z]{3}" minlength="3" maxlength="3" autocomplete="off" spellcheck="false"></label><button type="button" data-remove class="remove" aria-label="Remove section">Remove</button></div></template>
+  <script src="/welcome.js" type="module"></script>
+</body></html>

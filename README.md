@@ -22,8 +22,25 @@ npm ci
 npm start
 ```
 
-Open http://127.0.0.1:4174. The editor binds only to the local computer. From the
-application root, the example handbook is selected automatically. Build it with:
+Open http://127.0.0.1:4174 to see the welcome screen. Choose **Try the sample**,
+**Create a binder**, or **Open an existing binder**. The application binds only
+to the local computer. Keep the terminal open while you work; Ctrl+C stops it.
+
+**Create a binder** asks for a name, optional organization, new folder, and
+initial sections. Browse for a parent folder or enter a path directly. The
+wizard refuses existing folders and locations inside the application checkout.
+It creates your configuration and first draft, then opens the editor with a
+short edit → save → PDF proof guide. GitHub setup is optional.
+
+The editor shows the current binder's name and folder. **Change binder** returns
+to the welcome screen; unsaved edits use the existing leave-page confirmation.
+Public browser drafts are scoped to their binder, and an older tab cannot save
+into a different binder after switching. Returning to the welcome screen also
+offers a link back to the currently open binder. Choices are kept only for this
+running session; private paths are not stored in browser preferences.
+
+To open the sample directly without the welcome screen, use `npm run editor`.
+Build its PDFs with:
 
 ```sh
 node bin/binderpress.mjs build --public
@@ -35,7 +52,7 @@ a private library with the starter. Independent content folders retain their
 normal linked-private-library behavior.
 
 If an older clone reports a missing private path while opening the sample, run
-`npm start -- --public`. Relative `BINDER_PRIVATE_DIR` values are resolved from
+`npm start -- --public` (or `npm run editor:public` for direct editing). Relative `BINDER_PRIVATE_DIR` values are resolved from
 the selected content folder, not from the application folder. In Windows Command
 Prompt, `set BINDER_PRIVATE_DIR=` clears that variable for the current terminal.
 
@@ -44,6 +61,9 @@ PDFs in `examples/starter/docs/pdfs/` and PNG proofs in `docs/previews/` beneath
 that same content directory.
 
 ## Create your own content repository
+
+Use **Create a binder** on the welcome screen, or initialize a folder from the
+command line:
 
 ```sh
 node bin/binderpress.mjs init ../my-handbook
@@ -55,7 +75,7 @@ Initialization refuses an existing destination. Only the configuration,
 handouts, and starter instructions are copied; application files stay here.
 Paths containing spaces are supported; quote them in your shell.
 
-The CLI also supports `check`, `lint:layout`, `preview <CODE>`, and
+The CLI also supports `welcome`, `check`, `lint:layout`, `preview <CODE>`, and
 `setup:private`. Run `node bin/binderpress.mjs --help` for details. Once installed
 as a dependency, use `binderpress` in npm scripts. The content directory defaults
 to the current working directory or `BINDERPRESS_CONTENT_DIR`. Configuration is
@@ -114,6 +134,11 @@ Keep private handouts in a separate checkout with matching public placeholder
 paths and codes. Set `BINDER_PRIVATE_DIR` or set `privateSibling` and run
 `binderpress setup:private` from the content directory. There is no automatic
 private-repository discovery unless a sibling name is configured.
+
+On the welcome screen, choose **Open an existing binder** and check **Include
+linked private pages** to use that checkout. Leaving the checkbox off opens only
+public pages and placeholders, even if private settings exist. The sample and
+new-binder wizard always start in public mode.
 
 The local `.binder-local.json` link must be ignored by Git. Builds include a
 linked private library by default. `--public` explicitly builds placeholders;

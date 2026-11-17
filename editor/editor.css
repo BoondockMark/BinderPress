@@ -1,4 +1,16 @@
 :root { font: 14px/1.45 system-ui, sans-serif; color: #233247; color-scheme: light; --line: #cbd5e1; --accent: #1d4ed8; }
+header > .binder-context, header > .first-page-guide { flex: 1 1 100%; width: 100%; min-width: 0; }
+.binder-context { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 8px 0 12px; border-bottom: 1px solid #465a72; margin-bottom: 9px; }
+.binder-context > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
+.binder-context strong { font-size: 14px; }
+#binder-kind { font-size: 11px; color: #c4d3e6; }
+#binder-kind.sample-badge { background: #e5eee0; color: #294d3b; padding: 3px 7px; border-radius: 4px; }
+#binder-folder { font-size: 11px; color: #b8c7db; overflow-wrap: anywhere; }
+.binder-context a { flex-shrink: 0; font-size: 12px; color: #a7dfc9; }
+.first-page-guide { display: flex; align-items: center; gap: 15px; padding: 10px 12px; color: #213a35; background: #edf3e9; border: 1px solid #bccfb7; border-radius: 5px; margin-bottom: 10px; }
+.first-page-guide p { margin: 0; font-size: 12px; }
+.binder-context[hidden], .first-page-guide[hidden] { display: none; }
+@media (max-width: 600px) { .binder-context { align-items: start; } #binder-folder { width: 100%; } .binder-context a { max-width: 100px; } }
 * { box-sizing: border-box; }
 html, body { min-width: 0; }
 body { height: 100vh; height: 100dvh; min-height: 0; margin: 0; overflow: hidden; background: #edf1f6; display: flex; flex-direction: column; }

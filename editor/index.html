@@ -1,7 +1,9 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Handout editor</title><link rel="stylesheet" href="/editor.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="binderpress-session" content="{{workspaceSession}}"><meta name="binderpress-drafts" content="{{workspaceDrafts}}"><meta name="viewport" content="width=device-width"><title>Handout editor</title><link rel="stylesheet" href="/editor.css"></head>
 <body>
   <header>
+    <div id="binder-context" class="binder-context" hidden><div><strong id="binder-name"></strong><span id="binder-kind"></span><span id="binder-folder"></span></div><a id="change-binder" href="/welcome" hidden>Change binder</a></div>
+    <div id="first-page-guide" class="first-page-guide" hidden><p><strong>Your first page is ready.</strong> Edit the draft, choose <strong>Save</strong>, then <strong>Build PDF proof</strong> to see your printable page. GitHub setup is optional.</p><button id="dismiss-first-guide" type="button" aria-label="Dismiss getting started guide">Got it</button></div>
     <div class="workspace-bar">
       <strong class="workspace-title">Handout editor</strong>
       <button id="commands" title="Search editor commands (Ctrl/Cmd+K)" aria-haspopup="dialog" aria-controls="commands-dialog">Commands <kbd>⌘ / Ctrl K</kbd></button>

@@ -11,6 +11,7 @@ if (!command || ['help', '--help', '-h'].includes(command)) {
 Usage: binderpress <command> [--content <directory>] [options]
 
   init <directory>  Create an independent starter content folder
+  welcome           Choose a sample, create a binder, or open a content folder
   editor            Open the local visual editor at http://127.0.0.1:4174
   build             Validate and generate PDFs, previews, and indexes
   check             Verify committed PDFs and indexes without changing them
@@ -20,7 +21,7 @@ Usage: binderpress <command> [--content <directory>] [options]
 
 Build/editor accept --public or --private. Private content stays in its checkout.
 The content directory defaults to the current folder; this application's root
-uses examples/starter. Requires Node.js 22+ and npm ci in the application repo.`);
+uses examples/starter. Requires Node.js 22.12+ and npm ci in the application repo.`);
   process.exit(0);
 }
 const contentIndex = args.indexOf('--content');
@@ -44,7 +45,7 @@ if (command === 'init') {
   }
   console.log(`Created ${destination}. Run binderpress editor --content ${JSON.stringify(destination)}`);
 } else {
-  const scripts = { editor: 'editor', build: 'build', check: 'build', 'lint:layout': 'lint-layout', preview: 'preview', 'setup:private': 'setup' };
+  const scripts = { welcome: 'welcome', editor: 'editor', build: 'build', check: 'build', 'lint:layout': 'lint-layout', preview: 'preview', 'setup:private': 'setup' };
   if (!scripts[command]) throw Error(`Unknown command: ${command}. Run binderpress --help.`);
   process.argv = [process.execPath, fileURLToPath(import.meta.url), ...args, ...(command === 'check' ? ['--check'] : [])];
   await import(`../scripts/${scripts[command]}.mjs`);

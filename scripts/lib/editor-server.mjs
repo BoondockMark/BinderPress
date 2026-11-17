@@ -1,4 +1,4 @@
-import { APP_ROOT } from './project-config.mjs';
+import { APP_ROOT, CONFIG } from './project-config.mjs';
 import { createGitPublisher } from './editor-git.mjs';
 import { reviewMetadata } from './editor-review.mjs';
 import { createHash, randomUUID } from 'node:crypto';
@@ -23,7 +23,7 @@ const json = (response, status, value) => {
 };
 const revision = source => createHash('sha256').update(source).digest('hex');
 
-export async function createEditorServer({ root, privateDirectory, publicOnly = false, requirePrivate = false, gitPublisher = createGitPublisher() }) {
+export async function createEditorServer({ root, privateDirectory, publicOnly = false, requirePrivate = false, gitPublisher = createGitPublisher(), launcher = false, firstRun = false, workspaceId = '' }) {
   const content = await loadBuildContent(root, { privateDirectory, publicOnly, requirePrivate });
   let documents = content.documents;
   const { privateRoot } = content;
@@ -246,6 +246,12 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1');
+      if (request.method === 'GET' && url.pathname === '/api/workspace') return json(response, 200, {
+        title: CONFIG.title, organization: CONFIG.organization, root,
+        sample: path.resolve(root) === path.resolve(APP_ROOT, 'examples/starter'),
+        private: Boolean(privateRoot), launcher, firstRun
+      });
+      if (request.method === 'GET' && ['/workspace-controls.js', '/workspace-session.js'].includes(url.pathname)) return await serve(response, path.join(APP_ROOT, 'editor', url.pathname.slice(1)), 'text/javascript; charset=utf-8');
       if (url.pathname.startsWith('/api/git/')) {
         const hosts = ['127.0.0.1', 'localhost', '[::1]'].map(host => `${host}:${server.address().port}`);
         if (request.method !== 'POST' || !hosts.includes(request.headers.host) || request.headers.origin && request.headers.origin !== `http://${request.headers.host}`) return json(response, 403, { error: 'Git actions require the local editor origin.' });
@@ -405,7 +411,12 @@ export async function createEditorServer({ root, privateDirectory, publicOnly = 
           return json(response, 200, { revision: revision(value.source), status: savedStatus, committedAssets: pending.map(item => item.entry.file) });
         });
       }
-      if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) return await serve(response, path.join(APP_ROOT, 'editor/index.html'), 'text/html; charset=utf-8');
+      if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+        const drafts = launcher ? revision(path.resolve(root)) : '';
+        const html = (await fs.readFile(path.join(APP_ROOT, 'editor/index.html'), 'utf8')).replace('{{workspaceSession}}', workspaceId).replace('{{workspaceDrafts}}', drafts);
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        return response.end(html);
+      }
       if (request.method === 'GET' && url.pathname === '/git-controls.js') return await serve(response, path.join(APP_ROOT, 'editor/git-controls.js'), 'text/javascript; charset=utf-8');
       if (request.method === 'GET' && ['/review-controls.js', '/review-model.js'].includes(url.pathname)) return await serve(response, path.join(APP_ROOT, 'editor', url.pathname.slice(1)), 'text/javascript; charset=utf-8');
       if (request.method === 'GET' && ['/link-controls.js', '/link-model.js'].includes(url.pathname)) return await serve(response, path.join(APP_ROOT, 'editor', url.pathname.slice(1)), 'text/javascript; charset=utf-8');
